@@ -1096,6 +1096,7 @@ def pagina_inicio():
     
     - **📊 Partit**: Estadístiques completes d'un partit
     - **👤 Jugador**: Anàlisi individual de jugadors
+    - **🎴 Fitxes**: Fitxes generals del jugador
     - **📈 Comparativa**: Compara dos partits
     
     ---
