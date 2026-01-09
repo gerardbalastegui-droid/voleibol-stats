@@ -477,6 +477,35 @@ def obtener_errores_por_jugador(partido_ids):
         
         return df
 
+@st.cache_data(ttl=60)
+def obtener_jugadores_partido(partido_ids):
+    """Obtiene lista de jugadores que participaron en los partidos"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT DISTINCT
+                j.id,
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
+                j.dorsal,
+                j.posicion,
+                COUNT(*) as acciones
+            FROM acciones_new a
+            JOIN jugadores j ON a.jugador_id = j.id
+            WHERE a.partido_id IN ({ids_str})
+            GROUP BY j.id, j.nombre, j.apellido, j.dorsal, j.posicion
+            ORDER BY acciones DESC
+        """), conn)
+        
+        return df
+
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # =============================================================================
@@ -1218,6 +1247,29 @@ def pagina_partido():
                 'bloqueo': 'Bloqueig',
                 'total': 'Total'
             }), use_container_width=True, hide_index=True)
+    
+    # === JUGADORES DEL PARTIDO ===
+    st.markdown("---")
+    st.subheader("👥 Jugadors Participants")
+    
+    df_jugadores_partido = obtener_jugadores_partido(partido_ids)
+    
+    if not df_jugadores_partido.empty:
+        # Mostrar en formato más visual
+        cols = st.columns(4)
+        for idx, row in df_jugadores_partido.iterrows():
+            col_idx = idx % 4
+            with cols[col_idx]:
+                dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                posicion_str = f"({row['posicion']})" if row['posicion'] else ""
+                st.markdown(f"""
+                <div style="background: {COLOR_GRIS}; padding: 0.5rem; border-radius: 5px; margin: 0.25rem 0; text-align: center;">
+                    <strong>{row['jugador']}</strong> {dorsal_str}<br>
+                    <small>{posicion_str} - {row['acciones']} accions</small>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No hi ha dades de jugadors")
 
 def pagina_jugador():
     """Página de análisis de jugador"""
@@ -1522,8 +1574,58 @@ def pagina_comparativa():
         
         # Leyenda
         st.caption("✅ Millora (+5%) | ➡️ Similar (±5%) | ❌ Empitjora (-5%)")
+        
+        # === DISTRIBUCIÓN DEL COLOCADOR COMPARATIVA ===
+        st.markdown("---")
+        st.subheader("🎯 Comparativa Distribució del Col·locador")
+        
+        df_dist1 = obtener_distribucion_colocador(partido1)
+        df_dist2 = obtener_distribucion_colocador(partido2)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**vs {info1['rival']}**")
+            if not df_dist1.empty:
+                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True)
+            else:
+                st.info("No hi ha dades de distribució")
+        
+        with col2:
+            st.markdown(f"**vs {info2['rival']}**")
+            if not df_dist2.empty:
+                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True)
+            else:
+                st.info("No hi ha dades de distribució")
+        
+        # === JUGADORES DE CADA PARTIDO ===
+        st.markdown("---")
+        st.subheader("👥 Jugadors Participants")
+        
+        df_jug1 = obtener_jugadores_partido(partido1)
+        df_jug2 = obtener_jugadores_partido(partido2)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**vs {info1['rival']}** ({len(df_jug1)} jugadors)")
+            if not df_jug1.empty:
+                for _, row in df_jug1.iterrows():
+                    dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                    st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
+            else:
+                st.info("No hi ha dades")
+        
+        with col2:
+            st.markdown(f"**vs {info2['rival']}** ({len(df_jug2)} jugadors)")
+            if not df_jug2.empty:
+                for _, row in df_jug2.iterrows():
+                    dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                    st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
+            else:
+                st.info("No hi ha dades")
     
-    elif partido1 == partido2:
+    elif partido1 and partido2 and partido1 == partido2:
         st.warning("Selecciona dos partits diferents per comparar")
 
 # =============================================================================
