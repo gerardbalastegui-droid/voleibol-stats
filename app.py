@@ -1493,6 +1493,10 @@ def pagina_comparativa():
         info1 = partidos[partidos['id'] == partido1].iloc[0]
         info2 = partidos[partidos['id'] == partido2].iloc[0]
         
+        # Crear nombres con L/V
+        rival1_display = f"{info1['rival']} ({'L' if info1['local'] else 'V'})"
+        rival2_display = f"{info2['rival']} ({'L' if info2['local'] else 'V'})"
+        
         st.markdown("---")
         
         # Cargar datos
@@ -1517,7 +1521,7 @@ def pagina_comparativa():
             eficacias2.append(float(e2.iloc[0]) if not e2.empty else 0)
         
         fig.add_trace(go.Bar(
-            name=f"vs {info1['rival']}",
+            name=f"vs {rival1_display}",
             x=nombres,
             y=eficacias1,
             marker_color=COLOR_ROJO,
@@ -1526,7 +1530,7 @@ def pagina_comparativa():
         ))
         
         fig.add_trace(go.Bar(
-            name=f"vs {info2['rival']}",
+            name=f"vs {rival2_display}",
             x=nombres,
             y=eficacias2,
             marker_color=COLOR_NEGRO,
@@ -1564,8 +1568,8 @@ def pagina_comparativa():
             
             comparativa.append({
                 'Acció': nombre,
-                f'vs {info1["rival"]}': f'{e1}%',
-                f'vs {info2["rival"]}': f'{e2}%',
+                f'vs {rival1_display}': f'{e1}%',
+                f'vs {rival2_display}': f'{e2}%',
                 'Diferència': f'{diff:+.1f}%',
                 'Tendència': tendencia
             })
@@ -1585,14 +1589,14 @@ def pagina_comparativa():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown(f"**vs {info1['rival']}**")
+            st.markdown(f"**vs {rival1_display}**")
             if not df_dist1.empty:
                 st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True)
             else:
                 st.info("No hi ha dades de distribució")
         
         with col2:
-            st.markdown(f"**vs {info2['rival']}**")
+            st.markdown(f"**vs {rival2_display}**")
             if not df_dist2.empty:
                 st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True)
             else:
@@ -1608,7 +1612,7 @@ def pagina_comparativa():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown(f"**vs {info1['rival']}** ({len(df_jug1)} jugadors)")
+            st.markdown(f"**vs {rival1_display}** ({len(df_jug1)} jugadors)")
             if not df_jug1.empty:
                 for _, row in df_jug1.iterrows():
                     dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
@@ -1617,7 +1621,7 @@ def pagina_comparativa():
                 st.info("No hi ha dades")
         
         with col2:
-            st.markdown(f"**vs {info2['rival']}** ({len(df_jug2)} jugadors)")
+            st.markdown(f"**vs {rival2_display}** ({len(df_jug2)} jugadors)")
             if not df_jug2.empty:
                 for _, row in df_jug2.iterrows():
                     dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
