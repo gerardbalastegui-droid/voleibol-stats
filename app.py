@@ -760,47 +760,34 @@ def crear_grafico_distribucion_colocador(df_dist):
     # Crear la cuadrícula del campo
     for fila_idx, fila in enumerate(zonas_campo):
         for col_idx, zona in enumerate(fila):
-            x_pos = col_idx
-            y_pos = 1 - fila_idx  # Invertir para que P4-P3-P2 esté arriba
+            x_pos = col_idx * 1.5  # Más espaciado horizontal
+            y_pos = (1 - fila_idx) * 1.2  # Más espaciado vertical
             
             # Obtener datos de la zona
             if zona in datos_zona:
                 pct = datos_zona[zona]['porcentaje']
                 efic = datos_zona[zona]['eficacia']
                 col_count = datos_zona[zona]['colocaciones']
-                
-                # Color según porcentaje (más oscuro = más carga)
-                if pct > 25:
-                    color = COLOR_ROJO
-                    text_color = COLOR_BLANCO
-                elif pct > 15:
-                    color = COLOR_NARANJA
-                    text_color = COLOR_BLANCO
-                else:
-                    color = COLOR_GRIS
-                    text_color = COLOR_NEGRO
             else:
                 pct = 0
                 efic = 0
                 col_count = 0
-                color = COLOR_GRIS
-                text_color = COLOR_NEGRO
             
-            # Añadir rectángulo de zona
+            # Añadir rectángulo de zona - FONDO BLANCO
             fig.add_shape(
                 type="rect",
-                x0=x_pos - 0.45, y0=y_pos - 0.45,
-                x1=x_pos + 0.45, y1=y_pos + 0.45,
-                fillcolor=color,
+                x0=x_pos - 0.65, y0=y_pos - 0.5,
+                x1=x_pos + 0.65, y1=y_pos + 0.5,
+                fillcolor=COLOR_BLANCO,
                 line=dict(color=COLOR_NEGRO, width=2),
             )
             
             # Texto de la zona
             fig.add_annotation(
-                x=x_pos, y=y_pos + 0.25,
+                x=x_pos, y=y_pos + 0.28,
                 text=f"<b>{zona}</b>",
                 showarrow=False,
-                font=dict(size=16, color=text_color)
+                font=dict(size=14, color=COLOR_NEGRO)
             )
             
             # Porcentaje grande
@@ -808,37 +795,37 @@ def crear_grafico_distribucion_colocador(df_dist):
                 x=x_pos, y=y_pos,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
-                font=dict(size=24, color=text_color)
+                font=dict(size=22, color=COLOR_ROJO)
             )
             
             # Eficacia pequeña
             fig.add_annotation(
-                x=x_pos, y=y_pos - 0.25,
+                x=x_pos, y=y_pos - 0.28,
                 text=f"Efic: {efic}%",
                 showarrow=False,
-                font=dict(size=11, color=text_color)
+                font=dict(size=10, color=COLOR_NEGRO)
             )
     
-    # Añadir indicador de red
+    # Añadir indicador de red - ARRIBA DE TODO
     fig.add_shape(
         type="line",
-        x0=-0.6, y0=0.5,
-        x1=2.6, y1=0.5,
+        x0=-0.8, y0=2.0,
+        x1=3.8, y1=2.0,
         line=dict(color=COLOR_NEGRO, width=4, dash="solid"),
     )
     
     fig.add_annotation(
-        x=2.8, y=0.5,
-        text="Xarxa",
+        x=1.5, y=2.2,
+        text="<b>XARXA</b>",
         showarrow=False,
-        font=dict(size=10, color=COLOR_NEGRO)
+        font=dict(size=12, color=COLOR_NEGRO)
     )
     
     fig.update_layout(
         title="Distribució del Col·locador per Zona",
-        xaxis=dict(visible=False, range=[-0.7, 3]),
-        yaxis=dict(visible=False, range=[-0.7, 1.7], scaleanchor="x"),
-        height=350,
+        xaxis=dict(visible=False, range=[-1, 4]),
+        yaxis=dict(visible=False, range=[-0.8, 2.5], scaleanchor="x"),
+        height=450,
         showlegend=False,
         plot_bgcolor='white'
     )
