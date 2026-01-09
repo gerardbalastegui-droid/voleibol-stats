@@ -506,6 +506,133 @@ def obtener_jugadores_partido(partido_ids):
         
         return df
 
+@st.cache_data(ttl=60)
+def obtener_ficha_jugador(partido_ids, jugador_id):
+    """Obtiene todos los datos para la ficha de un jugador"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        # Estadísticas de ataque
+        ataque = conn.execute(text(f"""
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia,
+                ROUND(((COUNT(*) FILTER (WHERE marca = '#') - COUNT(*) FILTER (WHERE marca = '='))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficiencia
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+            AND tipo_accion = 'atacar'
+        """), {"jid": jugador_id}).fetchone()
+        
+        # Mejor rotación
+        mejor_rot = conn.execute(text(f"""
+            SELECT 
+                UPPER(zona_colocador) as rotacion,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) as total
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+            AND tipo_accion = 'atacar'
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_colocador
+            ORDER BY puntos DESC
+            LIMIT 1
+        """), {"jid": jugador_id}).fetchone()
+        
+        # Mejor zona
+        mejor_zona = conn.execute(text(f"""
+            SELECT 
+                UPPER(zona_jugador) as zona,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) as total
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+            AND tipo_accion = 'atacar'
+            AND zona_jugador IS NOT NULL
+            GROUP BY zona_jugador
+            ORDER BY puntos DESC
+            LIMIT 1
+        """), {"jid": jugador_id}).fetchone()
+        
+        # Errores principales
+        errores = pd.read_sql(text(f"""
+            SELECT 
+                tipo_accion,
+                COUNT(*) as errores
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+            AND (
+                (tipo_accion = 'bloqueo' AND marca IN ('=', '/'))
+                OR (tipo_accion != 'bloqueo' AND marca = '=')
+            )
+            GROUP BY tipo_accion
+            ORDER BY errores DESC
+            LIMIT 3
+        """), conn, params={"jid": jugador_id})
+        
+        # Otras estadísticas
+        otras = conn.execute(text(f"""
+            SELECT 
+                COUNT(*) FILTER (WHERE tipo_accion = 'saque' AND marca = '#') as aces,
+                COUNT(*) FILTER (WHERE tipo_accion = 'bloqueo' AND marca = '#') as bloqueos,
+                COUNT(*) FILTER (WHERE tipo_accion = 'recepción' AND marca IN ('#', '+')) as recepciones,
+                COUNT(*) FILTER (WHERE tipo_accion IN ('atacar', 'saque', 'bloqueo') AND marca = '#') as puntos_directos
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+        """), {"jid": jugador_id}).fetchone()
+        
+        # Valoración total
+        valor = conn.execute(text(f"""
+            SELECT
+                (
+                    COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND marca = '#')
+                  + COUNT(*) FILTER (WHERE tipo_accion = 'saque' AND marca = '#')
+                  + COUNT(*) FILTER (WHERE tipo_accion = 'bloqueo' AND marca = '#')
+                  - COUNT(*) FILTER (WHERE tipo_accion = 'recepción' AND marca = '=')
+                  - COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND marca = '=')
+                  - COUNT(*) FILTER (WHERE tipo_accion = 'saque' AND marca = '=')
+                  - COUNT(*) FILTER (WHERE tipo_accion = 'bloqueo' AND marca = '/')
+                ) AS valor_total
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+        """), {"jid": jugador_id}).fetchone()
+        
+        return {
+            'ataque': {
+                'total': ataque[0] if ataque else 0,
+                'puntos': ataque[1] if ataque else 0,
+                'eficacia': ataque[2] if ataque else 0,
+                'eficiencia': ataque[3] if ataque else 0
+            },
+            'mejor_rotacion': {
+                'nombre': mejor_rot[0] if mejor_rot else 'N/A',
+                'puntos': mejor_rot[1] if mejor_rot else 0,
+                'total': mejor_rot[2] if mejor_rot else 0
+            },
+            'mejor_zona': {
+                'nombre': mejor_zona[0] if mejor_zona else 'N/A',
+                'puntos': mejor_zona[1] if mejor_zona else 0,
+                'total': mejor_zona[2] if mejor_zona else 0
+            },
+            'errores': errores,
+            'otras': {
+                'aces': otras[0] if otras else 0,
+                'bloqueos': otras[1] if otras else 0,
+                'recepciones': otras[2] if otras else 0,
+                'puntos_directos': otras[3] if otras else 0
+            },
+            'valor_total': valor[0] if valor else 0
+        }
+
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # =============================================================================
@@ -1632,6 +1759,196 @@ def pagina_comparativa():
     elif partido1 and partido2 and partido1 == partido2:
         st.warning("Selecciona dos partits diferents per comparar")
 
+def pagina_fichas():
+    """Página de fichas individuales de jugadores"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>🎴 Fitxes de Jugadors</h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Verificar contexto
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
+        st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
+        return
+    
+    # Cargar partidos y jugadores
+    partidos = cargar_partidos(
+        st.session_state.equipo_id,
+        st.session_state.temporada_id,
+        st.session_state.get('fase_id')
+    )
+    
+    if partidos.empty:
+        st.info("No hi ha partits disponibles")
+        return
+    
+    jugadores = cargar_jugadores(st.session_state.equipo_id)
+    
+    if jugadores.empty:
+        st.info("No hi ha jugadors en aquest equip")
+        return
+    
+    # Selectores
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        jugador_options = [None] + jugadores['id'].tolist()
+        jugador_id = st.selectbox(
+            "Selecciona un jugador:",
+            options=jugador_options,
+            format_func=lambda x: "Selecciona un jugador..." if x is None
+                else f"{jugadores[jugadores['id'] == x]['nombre_completo'].iloc[0]} (#{jugadores[jugadores['id'] == x]['dorsal'].iloc[0] or '-'})",
+            key='ficha_jugador'
+        )
+    
+    with col2:
+        partidos['display'] = partidos.apply(
+            lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
+        )
+        
+        opciones_partido = ["tots"] + partidos['id'].tolist()
+        partido_seleccionado = st.selectbox(
+            "Partit:",
+            options=opciones_partido,
+            format_func=lambda x: f"Tots els partits ({len(partidos)})" if x == "tots"
+                else partidos[partidos['id'] == x]['display'].iloc[0],
+            key='ficha_partido'
+        )
+    
+    if jugador_id:
+        jugador_info = jugadores[jugadores['id'] == jugador_id].iloc[0]
+        
+        # Determinar partidos
+        if partido_seleccionado == "tots":
+            partido_ids = partidos['id'].tolist()
+            contexto_partido = f"Tots els partits ({len(partido_ids)})"
+        else:
+            partido_ids = [partido_seleccionado]
+            info_p = partidos[partidos['id'] == partido_seleccionado].iloc[0]
+            contexto_partido = f"vs {info_p['rival']} ({'L' if info_p['local'] else 'V'})"
+        
+        # Obtener datos de la ficha
+        ficha = obtener_ficha_jugador(partido_ids, jugador_id)
+        
+        st.markdown("---")
+        
+        # === HEADER DE LA FICHA ===
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, {COLOR_ROJO} 0%, #8B0000 100%); 
+                    padding: 1.5rem; border-radius: 10px; text-align: center; margin-bottom: 1rem;">
+            <h1 style="color: white; margin: 0;">{jugador_info['nombre_completo'].upper()}</h1>
+            <p style="color: white; margin: 0.5rem 0 0 0; opacity: 0.9;">
+                #{jugador_info['dorsal'] or '-'} | {jugador_info['posicion'] or '-'} | {contexto_partido}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # === SECCIÓN ATAQUE ===
+        col1, col2, col3 = st.columns(3)
+        
+        eficacia = ficha['ataque']['eficacia'] or 0
+        if eficacia >= 60:
+            color_efic = COLOR_VERDE
+        elif eficacia >= 40:
+            color_efic = COLOR_NARANJA
+        else:
+            color_efic = COLOR_ROJO
+        
+        with col1:
+            st.markdown(f"""
+            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                <h4 style="color: {COLOR_ROJO}; margin: 0;">EFICÀCIA ATAC</h4>
+                <p style="font-size: 3rem; font-weight: bold; color: {color_efic}; margin: 0.5rem 0;">{eficacia}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                <h4 style="color: {COLOR_ROJO}; margin: 0;">PUNTS ATAC</h4>
+                <p style="font-size: 3rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">{ficha['ataque']['puntos'] or 0}</p>
+                <small>de {ficha['ataque']['total'] or 0} intents</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            valor = ficha['valor_total'] or 0
+            color_valor = COLOR_VERDE if valor > 0 else COLOR_ROJO
+            signo = "+" if valor > 0 else ""
+            st.markdown(f"""
+            <div style="background: {COLOR_NEGRO}; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                <h4 style="color: white; margin: 0;">VALORACIÓ TOTAL</h4>
+                <p style="font-size: 3rem; font-weight: bold; color: {color_valor}; margin: 0.5rem 0;">{signo}{valor}</p>
+                <small style="color: {COLOR_GRIS};">punts - errors</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # === DESTACATS ===
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"""
+            <div style="background: {COLOR_AMARILLO}; padding: 1rem; border-radius: 10px;">
+                <h4 style="margin: 0;">⭐ MILLOR ROTACIÓ</h4>
+                <p style="font-size: 2rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">
+                    {ficha['mejor_rotacion']['nombre']}
+                </p>
+                <small>{ficha['mejor_rotacion']['puntos']} punts en {ficha['mejor_rotacion']['total']} atacs</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px;">
+                <h4 style="margin: 0;">🎯 ZONA MÉS PRODUCTIVA</h4>
+                <p style="font-size: 2rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">
+                    {ficha['mejor_zona']['nombre']}
+                </p>
+                <small>{ficha['mejor_zona']['puntos']} punts en {ficha['mejor_zona']['total']} atacs</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # === ALTRES ACCIONS ===
+        st.subheader("📊 Altres Accions")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        col1.metric("🎯 Aces", ficha['otras']['aces'])
+        col2.metric("🧱 Bloquejos #", ficha['otras']['bloqueos'])
+        col3.metric("🏐 Recepcions +/#", ficha['otras']['recepciones'])
+        col4.metric("⚡ Punts Directes", ficha['otras']['puntos_directos'])
+        
+        # === ERRORS ===
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("⚠️ Principals Errors")
+        
+        if not ficha['errores'].empty:
+            nombres_acc = {
+                'atacar': 'Atac', 
+                'recepción': 'Recepció', 
+                'saque': 'Saque', 
+                'bloqueo': 'Bloqueig', 
+                'defensa': 'Defensa'
+            }
+            
+            cols = st.columns(len(ficha['errores']))
+            for idx, (_, row) in enumerate(ficha['errores'].iterrows()):
+                nombre_cat = nombres_acc.get(row['tipo_accion'], row['tipo_accion'])
+                with cols[idx]:
+                    st.markdown(f"""
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <p style="margin: 0; font-weight: bold;">{nombre_cat}</p>
+                        <p style="font-size: 2rem; color: {COLOR_ROJO}; font-weight: bold; margin: 0;">{row['errores']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.success("✅ Cap error registrat!")
+
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
 # =============================================================================
@@ -1712,7 +2029,7 @@ def sidebar_contexto():
     
     pagina = st.sidebar.radio(
         "Selecciona secció:",
-        options=["🏠 Inici", "📊 Partit", "👤 Jugador", "📈 Comparativa"],
+        options=["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"],
         key='navegacion'
     )
     
@@ -1734,6 +2051,8 @@ def main():
         pagina_partido()
     elif pagina == "👤 Jugador":
         pagina_jugador()
+    elif pagina == "🎴 Fitxes":
+        pagina_fichas()
     elif pagina == "📈 Comparativa":
         pagina_comparativa()
 
