@@ -67,10 +67,14 @@ st.markdown(f"""
 @st.cache_resource
 def get_engine():
     """Crea conexión a la base de datos"""
-    # En producción, usar variables de entorno
-    return create_engine(
-        "postgresql+psycopg2://postgres:navi6573@localhost:5432/voleibol"
-    )
+    # Usar secrets de Streamlit Cloud si existen
+    if "database" in st.secrets:
+        return create_engine(st.secrets["database"]["url"])
+    else:
+        # Fallback para desarrollo local
+        return create_engine(
+            "postgresql+psycopg2://postgres:navi6573@localhost:5432/voleibol"
+        )
 
 def get_connection():
     """Obtiene una conexión activa"""
