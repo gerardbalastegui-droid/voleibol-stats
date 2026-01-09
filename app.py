@@ -151,12 +151,19 @@ def cargar_partidos(equipo_id, temporada_id, fase_id=None):
 def cargar_jugadores(equipo_id):
     """Carga jugadores de un equipo"""
     with get_engine().connect() as conn:
-        return pd.read_sql(text("""
+        df = pd.read_sql(text("""
             SELECT id, apellido, nombre, dorsal, posicion
             FROM jugadores
             WHERE equipo_id = :eid AND activo = true
             ORDER BY apellido
         """), conn, params={"eid": equipo_id})
+        
+        # Crear nombre completo en formato "Nombre Apellido"
+        df['nombre_completo'] = df.apply(
+            lambda x: f"{x['nombre']} {x['apellido']}" if x['nombre'] else x['apellido'],
+            axis=1
+        )
+        return df
 
 @st.cache_data(ttl=60)
 def obtener_estadisticas_partido(partido_id):
@@ -198,6 +205,37 @@ def obtener_resumen_acciones(partido_id):
             GROUP BY tipo_accion
             ORDER BY tipo_accion
         """), conn, params={"pid": partido_id})
+        
+        # Calcular eficacia y eficiencia
+        df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+        df['eficiencia'] = ((df['puntos'] - df['errores']) / df['total'] * 100).round(1)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_resumen_acciones_multi(partido_ids):
+    """Obtiene resumen de todas las acciones de múltiples partidos"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                tipo_accion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE marca = '+') as positivos,
+                COUNT(*) FILTER (WHERE marca = '!') as neutros,
+                COUNT(*) FILTER (WHERE marca = '-') as negativos,
+                COUNT(*) FILTER (WHERE marca = '/') as errores_forzados,
+                COUNT(*) FILTER (WHERE marca = '=') as errores
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            GROUP BY tipo_accion
+            ORDER BY tipo_accion
+        """), conn)
         
         # Calcular eficacia y eficiencia
         df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
@@ -294,7 +332,11 @@ def obtener_top_jugadores(partido_ids):
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
             SELECT 
-                j.apellido AS jugador,
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar' AND a.marca = '#') AS ataque,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'saque' AND a.marca = '#') AS saque,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'bloqueo' AND a.marca = '#') AS bloqueo,
@@ -304,7 +346,7 @@ def obtener_top_jugadores(partido_ids):
             WHERE a.partido_id IN ({ids_str})
             AND a.tipo_accion IN ('atacar', 'saque', 'bloqueo')
             AND a.marca = '#'
-            GROUP BY j.apellido
+            GROUP BY j.nombre, j.apellido
             HAVING COUNT(*) > 0
             ORDER BY total DESC
             LIMIT 10
@@ -414,7 +456,11 @@ def obtener_errores_por_jugador(partido_ids):
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
             SELECT 
-                j.apellido AS jugador,
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar' AND a.marca = '=') AS err_ataque,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'saque' AND a.marca = '=') AS err_saque,
                 COUNT(*) FILTER (WHERE a.tipo_accion = 'recepción' AND a.marca = '=') AS err_recepcion,
@@ -424,7 +470,7 @@ def obtener_errores_por_jugador(partido_ids):
             JOIN jugadores j ON a.jugador_id = j.id
             WHERE a.partido_id IN ({ids_str})
             AND a.marca IN ('=', '/')
-            GROUP BY j.apellido
+            GROUP BY j.nombre, j.apellido
             HAVING COUNT(*) FILTER (WHERE a.marca IN ('=', '/')) > 0
             ORDER BY total_errores DESC
         """), conn)
@@ -689,45 +735,112 @@ def crear_grafico_rotaciones(df_rotaciones):
     return fig
 
 def crear_grafico_distribucion_colocador(df_dist):
-    """Crea gráfico de distribución del colocador"""
+    """Crea visualización de distribución del colocador en formato campo 3x2"""
     if df_dist.empty:
         return None
     
-    fig = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=['Volum per Zona', 'Eficàcia per Zona'],
-        specs=[[{"type": "pie"}, {"type": "bar"}]]
+    # Crear diccionario de datos por zona
+    datos_zona = {}
+    for _, row in df_dist.iterrows():
+        zona = row['zona'].upper() if row['zona'] else 'N/A'
+        datos_zona[zona] = {
+            'colocaciones': row['colocaciones'],
+            'porcentaje': row['porcentaje'],
+            'eficacia': row['eficacia']
+        }
+    
+    # Orden del campo: P4 P3 P2 (arriba), P5 P6 P1 (abajo)
+    zonas_campo = [
+        ['P4', 'P3', 'P2'],
+        ['P5', 'P6', 'P1']
+    ]
+    
+    fig = go.Figure()
+    
+    # Crear la cuadrícula del campo
+    for fila_idx, fila in enumerate(zonas_campo):
+        for col_idx, zona in enumerate(fila):
+            x_pos = col_idx
+            y_pos = 1 - fila_idx  # Invertir para que P4-P3-P2 esté arriba
+            
+            # Obtener datos de la zona
+            if zona in datos_zona:
+                pct = datos_zona[zona]['porcentaje']
+                efic = datos_zona[zona]['eficacia']
+                col_count = datos_zona[zona]['colocaciones']
+                
+                # Color según porcentaje (más oscuro = más carga)
+                if pct > 25:
+                    color = COLOR_ROJO
+                    text_color = COLOR_BLANCO
+                elif pct > 15:
+                    color = COLOR_NARANJA
+                    text_color = COLOR_BLANCO
+                else:
+                    color = COLOR_GRIS
+                    text_color = COLOR_NEGRO
+            else:
+                pct = 0
+                efic = 0
+                col_count = 0
+                color = COLOR_GRIS
+                text_color = COLOR_NEGRO
+            
+            # Añadir rectángulo de zona
+            fig.add_shape(
+                type="rect",
+                x0=x_pos - 0.45, y0=y_pos - 0.45,
+                x1=x_pos + 0.45, y1=y_pos + 0.45,
+                fillcolor=color,
+                line=dict(color=COLOR_NEGRO, width=2),
+            )
+            
+            # Texto de la zona
+            fig.add_annotation(
+                x=x_pos, y=y_pos + 0.25,
+                text=f"<b>{zona}</b>",
+                showarrow=False,
+                font=dict(size=16, color=text_color)
+            )
+            
+            # Porcentaje grande
+            fig.add_annotation(
+                x=x_pos, y=y_pos,
+                text=f"<b>{pct}%</b>",
+                showarrow=False,
+                font=dict(size=24, color=text_color)
+            )
+            
+            # Eficacia pequeña
+            fig.add_annotation(
+                x=x_pos, y=y_pos - 0.25,
+                text=f"Efic: {efic}%",
+                showarrow=False,
+                font=dict(size=11, color=text_color)
+            )
+    
+    # Añadir indicador de red
+    fig.add_shape(
+        type="line",
+        x0=-0.6, y0=0.5,
+        x1=2.6, y1=0.5,
+        line=dict(color=COLOR_NEGRO, width=4, dash="solid"),
     )
     
-    # Pie chart de distribución
-    fig.add_trace(
-        go.Pie(
-            labels=df_dist['zona'],
-            values=df_dist['colocaciones'],
-            marker_colors=[COLOR_ROJO, COLOR_NEGRO, COLOR_NARANJA, COLOR_AMARILLO, COLOR_VERDE, COLOR_GRIS],
-            textinfo='label+percent',
-            hole=0.3
-        ),
-        row=1, col=1
-    )
-    
-    # Bar chart de eficacia por zona
-    colores = [color_eficacia(e) for e in df_dist['eficacia']]
-    fig.add_trace(
-        go.Bar(
-            x=df_dist['zona'],
-            y=df_dist['eficacia'],
-            marker_color=colores,
-            text=df_dist['eficacia'].apply(lambda x: f'{x}%'),
-            textposition='outside'
-        ),
-        row=1, col=2
+    fig.add_annotation(
+        x=2.8, y=0.5,
+        text="Xarxa",
+        showarrow=False,
+        font=dict(size=10, color=COLOR_NEGRO)
     )
     
     fig.update_layout(
-        title="Distribució del Col·locador",
-        height=400,
-        showlegend=False
+        title="Distribució del Col·locador per Zona",
+        xaxis=dict(visible=False, range=[-0.7, 3]),
+        yaxis=dict(visible=False, range=[-0.7, 1.7], scaleanchor="x"),
+        height=350,
+        showlegend=False,
+        plot_bgcolor='white'
     )
     
     return fig
@@ -874,7 +987,7 @@ def pagina_partido():
     """, unsafe_allow_html=True)
     
     # Verificar contexto
-    if 'equipo_id' not in st.session_state or not st.session_state.equipo_id:
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
         st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
         return
     
@@ -889,228 +1002,235 @@ def pagina_partido():
         st.info("No hi ha partits disponibles amb els filtres seleccionats")
         return
     
-    # Selector de partido
+    # Selector de partido con opción "Tots els partits"
     partidos['display'] = partidos.apply(
         lambda x: f"vs {x['rival']} ({'Local' if x['local'] else 'Visitant'}) - {x.get('fase', '')}", 
         axis=1
     )
     
+    opciones_partido = ["tots"] + partidos['id'].tolist()
     partido_seleccionado = st.selectbox(
         "Selecciona un partit:",
-        options=partidos['id'].tolist(),
-        format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0]
+        options=opciones_partido,
+        format_func=lambda x: f"📊 Tots els partits ({len(partidos)})" if x == "tots"
+            else partidos[partidos['id'] == x]['display'].iloc[0]
     )
     
-    if partido_seleccionado:
-        # Info del partido
+    # Determinar qué partidos analizar
+    if partido_seleccionado == "tots":
+        partido_ids = partidos['id'].tolist()
+        titulo_partido = f"Resum de {len(partido_ids)} partits"
+        info_extra = f"**Partits analitzats:** {len(partido_ids)}"
+    else:
+        partido_ids = [partido_seleccionado]
         info_partido = partidos[partidos['id'] == partido_seleccionado].iloc[0]
-        
-        st.markdown(f"""
-        ### 🏐 vs {info_partido['rival']}
-        **Tipus:** {'Local' if info_partido['local'] else 'Visitant'} | 
+        titulo_partido = f"vs {info_partido['rival']}"
+        info_extra = f"""**Tipus:** {'Local' if info_partido['local'] else 'Visitant'} | 
         **Fase:** {info_partido.get('fase', '-')} |
-        **Resultat:** {info_partido.get('resultado', '-')}
-        """)
+        **Resultat:** {info_partido.get('resultado', '-')}"""
+    
+    st.markdown(f"### 🏐 {titulo_partido}")
+    st.markdown(info_extra)
+    
+    st.markdown("---")
+    
+    # Cargar datos (usando lista de IDs)
+    df_resumen = obtener_resumen_acciones_multi(partido_ids)
+    df_sideout = obtener_sideout_contraataque(partido_ids)
+    df_top = obtener_top_jugadores(partido_ids)
+    df_rotaciones = obtener_ataque_por_rotacion(partido_ids)
+    df_distribucion = obtener_distribucion_colocador(partido_ids)
+    df_errores = obtener_analisis_errores(partido_ids)
+    df_errores_jug = obtener_errores_por_jugador(partido_ids)
+    
+    # === MÉTRICAS PRINCIPALES ===
+    st.subheader("📈 Resum General")
+    
+    cols = st.columns(4)
+    
+    # Ataque
+    ataque = df_resumen[df_resumen['tipo_accion'] == 'atacar']
+    if not ataque.empty:
+        cols[0].metric(
+            "🔥 Atac",
+            f"{ataque['eficacia'].iloc[0]}%",
+            f"Eficiència: {ataque['eficiencia'].iloc[0]}%"
+        )
+    
+    # Recepción
+    recepcion = df_resumen[df_resumen['tipo_accion'] == 'recepción']
+    if not recepcion.empty:
+        cols[1].metric(
+            "🎯 Recepció",
+            f"{recepcion['eficacia'].iloc[0]}%",
+            f"Total: {recepcion['total'].iloc[0]}"
+        )
+    
+    # Saque
+    saque = df_resumen[df_resumen['tipo_accion'] == 'saque']
+    if not saque.empty:
+        cols[2].metric(
+            "🚀 Saque",
+            f"{saque['eficacia'].iloc[0]}%",
+            f"Aces: {saque['puntos'].iloc[0]}"
+        )
+    
+    # Bloqueo
+    bloqueo = df_resumen[df_resumen['tipo_accion'] == 'bloqueo']
+    if not bloqueo.empty:
+        cols[3].metric(
+            "🧱 Bloqueig",
+            f"{bloqueo['eficacia'].iloc[0]}%",
+            f"Punts: {bloqueo['puntos'].iloc[0]}"
+        )
+    
+    # === TABS DE ANÁLISIS ===
+    st.markdown("---")
+    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Accions", 
+        "⚔️ Side-out", 
+        "🔄 Rotacions",
+        "🎯 Distribució",
+        "⚠️ Errors"
+    ])
+    
+    with tab1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(crear_grafico_acciones(df_resumen), use_container_width=True)
+        with col2:
+            st.plotly_chart(crear_grafico_eficacia(df_resumen), use_container_width=True)
         
-        st.markdown("---")
-        
-        # Cargar datos
-        df_resumen = obtener_resumen_acciones(partido_seleccionado)
-        df_sideout = obtener_sideout_contraataque(partido_seleccionado)
-        df_top = obtener_top_jugadores(partido_seleccionado)
-        df_rotaciones = obtener_ataque_por_rotacion(partido_seleccionado)
-        df_distribucion = obtener_distribucion_colocador(partido_seleccionado)
-        df_errores = obtener_analisis_errores(partido_seleccionado)
-        df_errores_jug = obtener_errores_por_jugador(partido_seleccionado)
-        
-        # === MÉTRICAS PRINCIPALES ===
-        st.subheader("📈 Resum General")
-        
-        cols = st.columns(4)
-        
-        # Ataque
-        ataque = df_resumen[df_resumen['tipo_accion'] == 'atacar']
-        if not ataque.empty:
-            cols[0].metric(
-                "🔥 Atac",
-                f"{ataque['eficacia'].iloc[0]}%",
-                f"Eficiència: {ataque['eficiencia'].iloc[0]}%"
-            )
-        
-        # Recepción
-        recepcion = df_resumen[df_resumen['tipo_accion'] == 'recepción']
-        if not recepcion.empty:
-            cols[1].metric(
-                "🎯 Recepció",
-                f"{recepcion['eficacia'].iloc[0]}%",
-                f"Total: {recepcion['total'].iloc[0]}"
-            )
-        
-        # Saque
-        saque = df_resumen[df_resumen['tipo_accion'] == 'saque']
-        if not saque.empty:
-            cols[2].metric(
-                "🚀 Saque",
-                f"{saque['eficacia'].iloc[0]}%",
-                f"Aces: {saque['puntos'].iloc[0]}"
-            )
-        
-        # Bloqueo
-        bloqueo = df_resumen[df_resumen['tipo_accion'] == 'bloqueo']
-        if not bloqueo.empty:
-            cols[3].metric(
-                "🧱 Bloqueig",
-                f"{bloqueo['eficacia'].iloc[0]}%",
-                f"Punts: {bloqueo['puntos'].iloc[0]}"
-            )
-        
-        # === TABS DE ANÁLISIS ===
-        st.markdown("---")
-        
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📊 Accions", 
-            "⚔️ Side-out", 
-            "🔄 Rotacions",
-            "🎯 Distribució",
-            "⚠️ Errors"
-        ])
-        
-        with tab1:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.plotly_chart(crear_grafico_acciones(df_resumen), use_container_width=True)
-            with col2:
-                st.plotly_chart(crear_grafico_eficacia(df_resumen), use_container_width=True)
+        # Tabla detallada
+        st.subheader("📋 Detall per Acció")
+        df_display = df_resumen.rename(columns={
+            'tipo_accion': 'Acció',
+            'total': 'Total',
+            'puntos': '#',
+            'positivos': '+',
+            'neutros': '!',
+            'negativos': '-',
+            'errores': '=',
+            'eficacia': 'Eficàcia (%)',
+            'eficiencia': 'Eficiència (%)'
+        })
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+    
+    with tab2:
+        if not df_sideout.empty:
+            st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True)
             
-            # Tabla detallada
-            st.subheader("📋 Detall per Acció")
-            df_display = df_resumen.rename(columns={
-                'tipo_accion': 'Acció',
-                'total': 'Total',
-                'puntos': '#',
-                'positivos': '+',
-                'neutros': '!',
-                'negativos': '-',
-                'errores': '=',
+            # Tabla side-out
+            col1, col2 = st.columns(2)
+            for idx, row in df_sideout.iterrows():
+                target_col = col1 if row['fase'] == 'Side-out' else col2
+                with target_col:
+                    st.markdown(f"""
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h3>{row['fase']}</h3>
+                        <p><strong>Total:</strong> {row['total']} atacs</p>
+                        <p><strong>Eficàcia:</strong> {row['eficacia']}%</p>
+                        <p><strong>Eficiència:</strong> {row['eficiencia']}%</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No hi ha dades de side-out/contraatac")
+    
+    with tab3:
+        st.subheader("🔄 Anàlisi per Rotació")
+        if not df_rotaciones.empty:
+            st.plotly_chart(crear_grafico_rotaciones(df_rotaciones), use_container_width=True)
+            
+            # Tabla de rotaciones
+            st.subheader("📋 Detall per Rotació")
+            df_rot_display = df_rotaciones.rename(columns={
+                'rotacion': 'Rotació',
+                'total': 'Total Atacs',
                 'eficacia': 'Eficàcia (%)',
                 'eficiencia': 'Eficiència (%)'
             })
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
-        
-        with tab2:
-            if not df_sideout.empty:
-                st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True)
-                
-                # Tabla side-out
-                col1, col2 = st.columns(2)
-                for idx, row in df_sideout.iterrows():
-                    target_col = col1 if row['fase'] == 'Side-out' else col2
-                    with target_col:
-                        st.markdown(f"""
-                        <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
-                            <h3>{row['fase']}</h3>
-                            <p><strong>Total:</strong> {row['total']} atacs</p>
-                            <p><strong>Eficàcia:</strong> {row['eficacia']}%</p>
-                            <p><strong>Eficiència:</strong> {row['eficiencia']}%</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-            else:
-                st.info("No hi ha dades de side-out/contraatac")
-        
-        with tab3:
-            st.subheader("🔄 Anàlisi per Rotació")
-            if not df_rotaciones.empty:
-                st.plotly_chart(crear_grafico_rotaciones(df_rotaciones), use_container_width=True)
-                
-                # Tabla de rotaciones
-                st.subheader("📋 Detall per Rotació")
-                df_rot_display = df_rotaciones.rename(columns={
-                    'rotacion': 'Rotació',
-                    'total': 'Total Atacs',
-                    'eficacia': 'Eficàcia (%)',
-                    'eficiencia': 'Eficiència (%)'
-                })
-                st.dataframe(df_rot_display, use_container_width=True, hide_index=True)
-                
-                # Mejor y peor rotación
-                mejor = df_rotaciones.loc[df_rotaciones['eficacia'].idxmax()]
-                peor = df_rotaciones.loc[df_rotaciones['eficacia'].idxmin()]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.success(f"✅ **Millor rotació:** {mejor['rotacion']} ({mejor['eficacia']}% eficàcia)")
-                with col2:
-                    st.error(f"⚠️ **Pitjor rotació:** {peor['rotacion']} ({peor['eficacia']}% eficàcia)")
-            else:
-                st.info("No hi ha dades de rotacions")
-        
-        with tab4:
-            st.subheader("🎯 Distribució del Col·locador")
-            if not df_distribucion.empty:
-                st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True)
-                
-                # Tabla de distribución
-                st.subheader("📋 Detall per Zona")
-                df_dist_display = df_distribucion.rename(columns={
-                    'zona': 'Zona',
-                    'colocaciones': 'Col·locacions',
-                    'porcentaje': '% Total',
-                    'eficacia': 'Eficàcia Atac (%)'
-                })
-                st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
-                
-                # Análisis de equilibrio
-                max_zona = df_distribucion.loc[df_distribucion['porcentaje'].idxmax()]
-                st.info(f"📊 **Zona més utilitzada:** {max_zona['zona']} ({max_zona['porcentaje']}% del total)")
-                
-                if max_zona['porcentaje'] > 30:
-                    st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
-            else:
-                st.info("No hi ha dades de distribució")
-        
-        with tab5:
-            st.subheader("⚠️ Anàlisi d'Errors")
-            if not df_errores.empty:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.plotly_chart(crear_grafico_errores(df_errores), use_container_width=True)
-                
-                with col2:
-                    if not df_errores_jug.empty:
-                        st.plotly_chart(crear_grafico_errores_jugador(df_errores_jug), use_container_width=True)
-                
-                # Tabla de errores por jugador
-                st.subheader("📋 Errors per Jugador")
-                df_err_display = df_errores_jug.rename(columns={
-                    'jugador': 'Jugador',
-                    'err_ataque': 'Atac',
-                    'err_saque': 'Saque',
-                    'err_recepcion': 'Recepció',
-                    'err_bloqueo': 'Bloqueig',
-                    'total_errores': 'Total'
-                })
-                st.dataframe(df_err_display, use_container_width=True, hide_index=True)
-                
-                # Resumen
-                total_errores = df_errores['total_errores'].sum()
-                st.metric("Total Errors del Partit", total_errores)
-            else:
-                st.info("No hi ha dades d'errors")
-        
-        # === RANKINGS ===
-        st.markdown("---")
-        crear_podio(df_top, "🏆 Top Anotadors del Partit")
-        
-        if not df_top.empty:
-            with st.expander("📋 Veure detall complet"):
-                st.dataframe(df_top.rename(columns={
-                    'jugador': 'Jugador',
-                    'ataque': 'Atac',
-                    'saque': 'Saque',
-                    'bloqueo': 'Bloqueig',
-                    'total': 'Total'
-                }), use_container_width=True, hide_index=True)
+            st.dataframe(df_rot_display, use_container_width=True, hide_index=True)
+            
+            # Mejor y peor rotación
+            mejor = df_rotaciones.loc[df_rotaciones['eficacia'].idxmax()]
+            peor = df_rotaciones.loc[df_rotaciones['eficacia'].idxmin()]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.success(f"✅ **Millor rotació:** {mejor['rotacion']} ({mejor['eficacia']}% eficàcia)")
+            with col2:
+                st.error(f"⚠️ **Pitjor rotació:** {peor['rotacion']} ({peor['eficacia']}% eficàcia)")
+        else:
+            st.info("No hi ha dades de rotacions")
+    
+    with tab4:
+        st.subheader("🎯 Distribució del Col·locador")
+        if not df_distribucion.empty:
+            st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True)
+            
+            # Tabla de distribución
+            st.subheader("📋 Detall per Zona")
+            df_dist_display = df_distribucion.rename(columns={
+                'zona': 'Zona',
+                'colocaciones': 'Col·locacions',
+                'porcentaje': '% Total',
+                'eficacia': 'Eficàcia Atac (%)'
+            })
+            st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
+            
+            # Análisis de equilibrio
+            max_zona = df_distribucion.loc[df_distribucion['porcentaje'].idxmax()]
+            st.info(f"📊 **Zona més utilitzada:** {max_zona['zona']} ({max_zona['porcentaje']}% del total)")
+            
+            if max_zona['porcentaje'] > 30:
+                st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
+        else:
+            st.info("No hi ha dades de distribució")
+    
+    with tab5:
+        st.subheader("⚠️ Anàlisi d'Errors")
+        if not df_errores.empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.plotly_chart(crear_grafico_errores(df_errores), use_container_width=True)
+            
+            with col2:
+                if not df_errores_jug.empty:
+                    st.plotly_chart(crear_grafico_errores_jugador(df_errores_jug), use_container_width=True)
+            
+            # Tabla de errores por jugador
+            st.subheader("📋 Errors per Jugador")
+            df_err_display = df_errores_jug.rename(columns={
+                'jugador': 'Jugador',
+                'err_ataque': 'Atac',
+                'err_saque': 'Saque',
+                'err_recepcion': 'Recepció',
+                'err_bloqueo': 'Bloqueig',
+                'total_errores': 'Total'
+            })
+            st.dataframe(df_err_display, use_container_width=True, hide_index=True)
+            
+            # Resumen
+            total_errores = df_errores['total_errores'].sum()
+            st.metric("Total Errors", total_errores)
+        else:
+            st.info("No hi ha dades d'errors")
+    
+    # === RANKINGS ===
+    st.markdown("---")
+    crear_podio(df_top, "🏆 Top Anotadors")
+    
+    if not df_top.empty:
+        with st.expander("📋 Veure detall complet"):
+            st.dataframe(df_top.rename(columns={
+                'jugador': 'Jugador',
+                'ataque': 'Atac',
+                'saque': 'Saque',
+                'bloqueo': 'Bloqueig',
+                'total': 'Total'
+            }), use_container_width=True, hide_index=True)
 
 def pagina_jugador():
     """Página de análisis de jugador"""
@@ -1121,7 +1241,7 @@ def pagina_jugador():
     """, unsafe_allow_html=True)
     
     # Verificar contexto
-    if 'equipo_id' not in st.session_state or not st.session_state.equipo_id:
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
         st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
         return
     
@@ -1133,18 +1253,15 @@ def pagina_jugador():
         return
     
     # Selector de jugador
-    jugadores['display'] = jugadores.apply(
-        lambda x: f"{x['apellido']} {x['nombre'] or ''} (#{x['dorsal'] or '-'})", 
-        axis=1
-    )
-    
     col1, col2 = st.columns([2, 1])
     
     with col1:
+        jugador_options = [None] + jugadores['id'].tolist()
         jugador_id = st.selectbox(
             "Selecciona un jugador:",
-            options=jugadores['id'].tolist(),
-            format_func=lambda x: jugadores[jugadores['id'] == x]['display'].iloc[0]
+            options=jugador_options,
+            format_func=lambda x: "Selecciona un jugador..." if x is None
+                else f"{jugadores[jugadores['id'] == x]['nombre_completo'].iloc[0]} (#{jugadores[jugadores['id'] == x]['dorsal'].iloc[0] or '-'})"
         )
     
     with col2:
@@ -1171,7 +1288,7 @@ def pagina_jugador():
         jugador_info = jugadores[jugadores['id'] == jugador_id].iloc[0]
         
         st.markdown(f"""
-        ### {jugador_info['apellido']} {jugador_info['nombre'] or ''}
+        ### {jugador_info['nombre_completo']}
         **Dorsal:** #{jugador_info['dorsal'] or '-'} | 
         **Posició:** {jugador_info['posicion'] or '-'}
         """)
@@ -1271,7 +1388,7 @@ def pagina_comparativa():
     """, unsafe_allow_html=True)
     
     # Verificar contexto
-    if 'equipo_id' not in st.session_state or not st.session_state.equipo_id:
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
         st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
         return
     
@@ -1416,43 +1533,59 @@ def sidebar_contexto():
     equipos = cargar_equipos()
     temporadas = cargar_temporadas()
     
-    # Selector de equipo
+    # Selector de equipo con placeholder
+    equipo_options = [None] + equipos['id'].tolist()
     equipo_id = st.sidebar.selectbox(
         "Equip:",
-        options=equipos['id'].tolist(),
-        format_func=lambda x: equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
+        options=equipo_options,
+        format_func=lambda x: "Selecciona l'equip..." if x is None 
+            else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
         key='select_equipo'
     )
     
     if equipo_id:
         st.session_state.equipo_id = equipo_id
         st.session_state.equipo_nombre = equipos[equipos['id'] == equipo_id]['nombre_completo'].iloc[0]
-    
-    # Selector de temporada
-    temporada_id = st.sidebar.selectbox(
-        "Temporada:",
-        options=temporadas['id'].tolist(),
-        format_func=lambda x: temporadas[temporadas['id'] == x]['nombre'].iloc[0],
-        key='select_temporada'
-    )
-    
-    if temporada_id:
-        st.session_state.temporada_id = temporada_id
-        st.session_state.temporada_nombre = temporadas[temporadas['id'] == temporada_id]['nombre'].iloc[0]
         
-        # Cargar fases
-        fases = cargar_fases(temporada_id)
+        # Selector de temporada con placeholder
+        temporada_options = [None] + temporadas['id'].tolist()
+        temporada_id = st.sidebar.selectbox(
+            "Temporada:",
+            options=temporada_options,
+            format_func=lambda x: "Selecciona la temporada..." if x is None
+                else temporadas[temporadas['id'] == x]['nombre'].iloc[0],
+            key='select_temporada'
+        )
         
-        if not fases.empty:
-            fase_options = [None] + fases['id'].tolist()
-            fase_id = st.sidebar.selectbox(
-                "Fase (opcional):",
-                options=fase_options,
-                format_func=lambda x: "Totes les fases" if x is None 
-                    else fases[fases['id'] == x]['nombre'].iloc[0],
-                key='select_fase'
-            )
-            st.session_state.fase_id = fase_id
+        if temporada_id:
+            st.session_state.temporada_id = temporada_id
+            st.session_state.temporada_nombre = temporadas[temporadas['id'] == temporada_id]['nombre'].iloc[0]
+            
+            # Cargar fases
+            fases = cargar_fases(temporada_id)
+            
+            if not fases.empty:
+                fase_options = [None] + fases['id'].tolist()
+                fase_id = st.sidebar.selectbox(
+                    "Fase (opcional):",
+                    options=fase_options,
+                    format_func=lambda x: "Totes les fases" if x is None 
+                        else fases[fases['id'] == x]['nombre'].iloc[0],
+                    key='select_fase'
+                )
+                st.session_state.fase_id = fase_id
+            else:
+                st.session_state.fase_id = None
+        else:
+            st.session_state.temporada_id = None
+            st.session_state.temporada_nombre = None
+            st.session_state.fase_id = None
+    else:
+        st.session_state.equipo_id = None
+        st.session_state.equipo_nombre = None
+        st.session_state.temporada_id = None
+        st.session_state.temporada_nombre = None
+        st.session_state.fase_id = None
     
     st.sidebar.markdown("---")
     
