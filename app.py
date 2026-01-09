@@ -1418,20 +1418,23 @@ def pagina_comparativa():
     col1, col2 = st.columns(2)
     
     with col1:
+        partido1_options = [None] + partidos['id'].tolist()
         partido1 = st.selectbox(
             "Partit 1:",
-            options=partidos['id'].tolist(),
-            format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
+            options=partido1_options,
+            format_func=lambda x: "Selecciona Partit 1..." if x is None
+                else partidos[partidos['id'] == x]['display'].iloc[0],
             key='partido1'
         )
     
     with col2:
+        partido2_options = [None] + partidos['id'].tolist()
         partido2 = st.selectbox(
             "Partit 2:",
-            options=partidos['id'].tolist(),
-            format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
-            key='partido2',
-            index=1 if len(partidos) > 1 else 0
+            options=partido2_options,
+            format_func=lambda x: "Selecciona Partit 2..." if x is None
+                else partidos[partidos['id'] == x]['display'].iloc[0],
+            key='partido2'
         )
     
     if partido1 and partido2 and partido1 != partido2:
