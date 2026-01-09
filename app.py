@@ -1330,21 +1330,43 @@ def pagina_jugador():
                 st.plotly_chart(fig_radar, use_container_width=True)
         
         with col2:
-            # Gráfico de barras
+            # Gráfico de barras - Acciones en X, Marcas como series
             fig = go.Figure()
             
-            for _, row in df_jugador.iterrows():
+            # Renombrar acciones a catalán
+            nombres_acciones = {
+                'atacar': 'Atac',
+                'bloqueo': 'Bloc',
+                'defensa': 'Defensa',
+                'recepción': 'Recepció',
+                'saque': 'Saque',
+                'colocación': 'Col·locació'
+            }
+            
+            # Preparar datos por marca
+            marcas = ['#', '+', '!', '-', '/', '=']
+            colores_marcas = [COLOR_VERDE, '#81C784', COLOR_AMARILLO, COLOR_NARANJA, '#FF7043', COLOR_ROJO]
+            campos_marcas = ['puntos', 'positivos', 'neutros', 'negativos', 'errores_forzados', 'errores']
+            
+            # Ordenar acciones
+            df_ordenado = df_jugador.copy()
+            df_ordenado['accion_cat'] = df_ordenado['tipo_accion'].map(nombres_acciones).fillna(df_ordenado['tipo_accion'])
+            
+            for marca, color, campo in zip(marcas, colores_marcas, campos_marcas):
                 fig.add_trace(go.Bar(
-                    name=row['tipo_accion'].capitalize(),
-                    x=['#', '+', '!', '-', '='],
-                    y=[row['puntos'], row['positivos'], row['neutros'], 
-                       row['negativos'], row['errores']],
+                    name=marca,
+                    x=df_ordenado['accion_cat'],
+                    y=df_ordenado[campo],
+                    marker_color=color
                 ))
             
             fig.update_layout(
                 title='Distribució per Marca',
+                xaxis_title='Acció',
+                yaxis_title='Quantitat',
                 barmode='group',
-                height=400
+                height=400,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
             )
             st.plotly_chart(fig, use_container_width=True)
         
