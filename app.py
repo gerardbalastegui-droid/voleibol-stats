@@ -1315,9 +1315,9 @@ def pagina_partido():
     with tab1:
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(crear_grafico_acciones(df_resumen), use_container_width=True)
+            st.plotly_chart(crear_grafico_acciones(df_resumen), use_container_width=True, config={'staticPlot': True})
         with col2:
-            st.plotly_chart(crear_grafico_eficacia(df_resumen), use_container_width=True)
+            st.plotly_chart(crear_grafico_eficacia(df_resumen), use_container_width=True, config={'staticPlot': True})
         
         # Tabla detallada
         st.subheader("📋 Detall per Acció")
@@ -1418,7 +1418,7 @@ def pagina_partido():
     
     with tab2:
         if not df_sideout.empty:
-            st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True)
+            st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True, config={'staticPlot': True})
             
             # Tabla side-out
             col1, col2 = st.columns(2)
@@ -1439,7 +1439,7 @@ def pagina_partido():
     with tab3:
         st.subheader("🔄 Anàlisi per Rotació")
         if not df_rotaciones.empty:
-            st.plotly_chart(crear_grafico_rotaciones(df_rotaciones), use_container_width=True)
+            st.plotly_chart(crear_grafico_rotaciones(df_rotaciones), use_container_width=True, config={'staticPlot': True})
             
             # Tabla de rotaciones
             st.subheader("📋 Detall per Rotació")
@@ -1466,7 +1466,7 @@ def pagina_partido():
     with tab4:
         st.subheader("🎯 Distribució del Col·locador")
         if not df_distribucion.empty:
-            st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True)
+            st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True, config={'staticPlot': True})
             
             # Tabla de distribución
             st.subheader("📋 Detall per Zona")
@@ -1493,11 +1493,11 @@ def pagina_partido():
             col1, col2 = st.columns(2)
             
             with col1:
-                st.plotly_chart(crear_grafico_errores(df_errores), use_container_width=True)
+                st.plotly_chart(crear_grafico_errores(df_errores), use_container_width=True, config={'staticPlot': True})
             
             with col2:
                 if not df_errores_jug.empty:
-                    st.plotly_chart(crear_grafico_errores_jugador(df_errores_jug), use_container_width=True)
+                    st.plotly_chart(crear_grafico_errores_jugador(df_errores_jug), use_container_width=True, config={'staticPlot': True})
             
             # Tabla de errores por jugador
             st.subheader("📋 Errors per Jugador")
@@ -1662,7 +1662,7 @@ def pagina_jugador():
             # Gráfico radar
             fig_radar = crear_grafico_radar_jugador(df_jugador)
             if fig_radar:
-                st.plotly_chart(fig_radar, use_container_width=True)
+                st.plotly_chart(fig_radar, use_container_width=True, config={'staticPlot': True})
         
         with col2:
             # Gráfico de barras - Acciones en X, Marcas como series
@@ -1703,7 +1703,7 @@ def pagina_jugador():
                 height=400,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02)
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
         
         # === TABLA DETALLADA ===
         st.subheader("📋 Estadístiques Detallades")
@@ -1787,7 +1787,7 @@ def pagina_jugador():
                                          max(100, df_accion['eficacia'].max() + 10)])
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
                     
                     # Indicador de tendencia
                     if len(df_accion) >= 2:
@@ -1912,7 +1912,7 @@ def pagina_comparativa():
             height=400
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
         
         # Tabla comparativa con tendencias
         st.subheader("📋 Taula Comparativa amb Tendències")
@@ -1959,14 +1959,14 @@ def pagina_comparativa():
         with col1:
             st.markdown(f"**vs {rival1_display}**")
             if not df_dist1.empty:
-                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True)
+                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True, config={'staticPlot': True})
             else:
                 st.info("No hi ha dades de distribució")
         
         with col2:
             st.markdown(f"**vs {rival2_display}**")
             if not df_dist2.empty:
-                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True)
+                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True, config={'staticPlot': True})
             else:
                 st.info("No hi ha dades de distribució")
         
