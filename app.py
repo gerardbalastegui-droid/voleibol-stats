@@ -1322,40 +1322,61 @@ def pagina_partido():
                     
                     if not df_acc.empty:
                         row = df_acc.iloc[0]
-                        fila[f'{nombre} #'] = int(row['puntos'])
-                        fila[f'{nombre} +'] = int(row['positivos'])
-                        fila[f'{nombre} !'] = int(row['neutros'])
-                        fila[f'{nombre} -'] = int(row['negativos'])
-                        fila[f'{nombre} /'] = int(row['errores_forzados'])
-                        fila[f'{nombre} ='] = int(row['errores'])
-                        fila[f'{nombre} Efic%'] = row['eficacia']
-                        fila[f'{nombre} Efcn%'] = row['eficiencia']
+                        fila[f'{nombre}_#'] = int(row['puntos'])
+                        fila[f'{nombre}_+'] = int(row['positivos'])
+                        fila[f'{nombre}_!'] = int(row['neutros'])
+                        fila[f'{nombre}_-'] = int(row['negativos'])
+                        fila[f'{nombre}_/'] = int(row['errores_forzados'])
+                        fila[f'{nombre}_='] = int(row['errores'])
+                        fila[f'{nombre}_Efc'] = row['eficacia']
+                        fila[f'{nombre}_Efn'] = row['eficiencia']
                     else:
-                        fila[f'{nombre} #'] = '-'
-                        fila[f'{nombre} +'] = '-'
-                        fila[f'{nombre} !'] = '-'
-                        fila[f'{nombre} -'] = '-'
-                        fila[f'{nombre} /'] = '-'
-                        fila[f'{nombre} ='] = '-'
-                        fila[f'{nombre} Efic%'] = '-'
-                        fila[f'{nombre} Efcn%'] = '-'
+                        fila[f'{nombre}_#'] = ''
+                        fila[f'{nombre}_+'] = ''
+                        fila[f'{nombre}_!'] = ''
+                        fila[f'{nombre}_-'] = ''
+                        fila[f'{nombre}_/'] = ''
+                        fila[f'{nombre}_='] = ''
+                        fila[f'{nombre}_Efc'] = ''
+                        fila[f'{nombre}_Efn'] = ''
                 
                 tabla_data.append(fila)
             
             df_tabla_jugadores = pd.DataFrame(tabla_data)
             
-            # Selector de acción para mostrar
-            accion_mostrar = st.selectbox(
-                "Filtrar per acció:",
-                options=['Totes', 'Atac', 'Recepció', 'Saque', 'Bloqueig'],
-                key='filtro_accion_jugadores'
-            )
+            # Crear columnas multinivel
+            columnas_multinivel = [('', 'Jugador')]
+            for accion in ['Atac', 'Recepció', 'Saque', 'Bloqueig']:
+                for simbolo in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
+                    columnas_multinivel.append((accion, simbolo))
             
-            if accion_mostrar == 'Totes':
-                st.dataframe(df_tabla_jugadores, use_container_width=True, hide_index=True)
-            else:
-                cols_mostrar = ['Jugador'] + [c for c in df_tabla_jugadores.columns if c.startswith(accion_mostrar)]
-                st.dataframe(df_tabla_jugadores[cols_mostrar], use_container_width=True, hide_index=True)
+            df_tabla_jugadores.columns = pd.MultiIndex.from_tuples(columnas_multinivel)
+            
+            # Mostrar con estilo HTML para encabezados multinivel
+            st.markdown(df_tabla_jugadores.to_html(index=False), unsafe_allow_html=True)
+            
+            # Añadir estilo CSS para la tabla
+            st.markdown("""
+            <style>
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                font-size: 12px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 4px;
+                text-align: center;
+            }
+            th {
+                background-color: #C8102E;
+                color: white;
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            </style>
+            """, unsafe_allow_html=True)
         else:
             st.info("No hi ha dades de jugadors")
     
