@@ -404,6 +404,35 @@ def obtener_ranking_equipo(partido_ids, tipo_accion):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_rendimiento_rotacion_jugador(partido_ids, jugador_id):
+    """Obtiene el rendimiento del jugador por rotación"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                UPPER(zona_colocador) as rotacion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE marca IN ('#','+')) as positivos,
+                COUNT(*) FILTER (WHERE marca = '=') as errores,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia,
+                ROUND(((COUNT(*) FILTER (WHERE marca = '#') - COUNT(*) FILTER (WHERE marca = '='))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficiencia
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jid
+            AND tipo_accion = 'atacar'
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_colocador
+            ORDER BY zona_colocador
+        """), conn, params={"jid": jugador_id})
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_sideout_contraataque(partido_ids):
     """Obtiene estadísticas de side-out vs contraataque"""
     if isinstance(partido_ids, int):
@@ -2107,6 +2136,86 @@ def pagina_jugador():
                 st.info("Necessites mínim 5 accions per veure l'anàlisi")
         else:
             st.info("No hi ha dades suficients per l'anàlisi")
+        
+        # === RENDIMENT PER ROTACIÓ ===
+        st.markdown("---")
+        st.subheader("🔄 Rendiment per Rotació (Atac)")
+        
+        df_rotacion = obtener_rendimiento_rotacion_jugador(partido_ids, jugador_id)
+        
+        if not df_rotacion.empty:
+            # Ordenar rotaciones P1-P6
+            orden_rot = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
+            df_rotacion['rotacion'] = pd.Categorical(df_rotacion['rotacion'], categories=orden_rot, ordered=True)
+            df_rotacion = df_rotacion.sort_values('rotacion')
+            
+            # Gráfico de barras por rotación
+            fig = go.Figure()
+            
+            colores = [COLOR_VERDE if e >= 60 else COLOR_NARANJA if e >= 40 else COLOR_ROJO 
+                      for e in df_rotacion['eficacia']]
+            
+            fig.add_trace(go.Bar(
+                x=df_rotacion['rotacion'],
+                y=df_rotacion['eficacia'],
+                marker_color=colores,
+                text=df_rotacion['eficacia'].apply(lambda x: f'{x}%'),
+                textposition='outside'
+            ))
+            
+            fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
+                          annotation_text="Bo (60%)")
+            fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
+                          annotation_text="Regular (40%)")
+            
+            fig.update_layout(
+                title="Eficàcia d'Atac per Rotació",
+                xaxis_title="Rotació (Posició del Col·locador)",
+                yaxis_title="Eficàcia (%)",
+                height=350,
+                yaxis=dict(range=[0, max(100, df_rotacion['eficacia'].max() + 15)])
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+            
+            # Mostrar mejor y peor rotación
+            mejor_rot = df_rotacion.loc[df_rotacion['eficacia'].idxmax()]
+            peor_rot = df_rotacion.loc[df_rotacion['eficacia'].idxmin()]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"""
+                <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_VERDE};">
+                    <h4 style="color: {COLOR_VERDE}; margin: 0;">⭐ Millor Rotació</h4>
+                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0;">{mejor_rot['rotacion']}</p>
+                    <p style="margin: 0;">{mejor_rot['eficacia']}% eficàcia</p>
+                    <small>{int(mejor_rot['puntos'])} punts en {int(mejor_rot['total'])} atacs</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_ROJO};">
+                    <h4 style="color: {COLOR_ROJO}; margin: 0;">⚠️ A Treballar</h4>
+                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0;">{peor_rot['rotacion']}</p>
+                    <p style="margin: 0;">{peor_rot['eficacia']}% eficàcia</p>
+                    <small>{int(peor_rot['puntos'])} punts en {int(peor_rot['total'])} atacs</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Tabla detallada
+            with st.expander("📋 Veure detall per rotació"):
+                df_rot_display = df_rotacion[['rotacion', 'total', 'puntos', 'eficacia', 'eficiencia']].rename(columns={
+                    'rotacion': 'Rotació',
+                    'total': 'Total Atacs',
+                    'puntos': 'Punts (#)',
+                    'eficacia': 'Eficàcia (%)',
+                    'eficiencia': 'Eficiència (%)'
+                })
+                st.dataframe(df_rot_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha dades d'atac per rotació per aquest jugador")
 
 def pagina_comparativa():
     """Página de comparación de partidos"""
