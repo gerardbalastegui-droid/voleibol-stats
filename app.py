@@ -1592,6 +1592,9 @@ def pagina_jugador():
         
         st.caption(f"📊 Analitzant: {contexto_txt}")
         
+        # DEBUG - mostrar qué se está consultando
+        st.info(f"🔍 Debug: jugador_id={jugador_id}, partido_ids={partido_ids}")
+        
         # Cargar estadísticas
         df_jugador = obtener_estadisticas_jugador(partido_ids, jugador_id)
         
