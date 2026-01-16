@@ -349,6 +349,28 @@ def obtener_evolucion_jugador(partido_ids, jugador_id):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_media_equipo(partido_ids):
+    """Obtiene la media del equipo para comparar con jugador individual"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                tipo_accion,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia_media,
+                ROUND(((COUNT(*) FILTER (WHERE marca = '#') - COUNT(*) FILTER (WHERE marca = '='))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficiencia_media
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND tipo_accion IN ('atacar', 'recepción', 'saque', 'bloqueo')
+            GROUP BY tipo_accion
+        """), conn)
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_sideout_contraataque(partido_ids):
     """Obtiene estadísticas de side-out vs contraataque"""
     if isinstance(partido_ids, int):
@@ -1807,6 +1829,95 @@ def pagina_jugador():
                 st.info("No hi ha dades d'evolució")
         else:
             st.info("Selecciona 'Tots els partits' per veure l'evolució")
+        
+        # === COMPARATIVA AMB MITJANA DE L'EQUIP ===
+        st.markdown("---")
+        st.subheader("🎯 Comparativa amb l'Equip")
+        
+        df_media_equipo = obtener_media_equipo(partido_ids)
+        
+        if not df_media_equipo.empty and not df_jugador.empty:
+            nombres_acc = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+            
+            comparativa_data = []
+            for accion in ['atacar', 'recepción', 'saque', 'bloqueo']:
+                media_row = df_media_equipo[df_media_equipo['tipo_accion'] == accion]
+                jugador_row = df_jugador[df_jugador['tipo_accion'] == accion]
+                
+                if not media_row.empty and not jugador_row.empty:
+                    efic_media = float(media_row['eficacia_media'].iloc[0])
+                    efic_jugador = float(jugador_row['eficacia'].iloc[0])
+                    diferencia = efic_jugador - efic_media
+                    
+                    comparativa_data.append({
+                        'accion': nombres_acc[accion],
+                        'jugador': efic_jugador,
+                        'media': efic_media,
+                        'diferencia': diferencia
+                    })
+            
+            if comparativa_data:
+                # Gráfico de barras comparativo
+                fig = go.Figure()
+                
+                acciones_nombres = [d['accion'] for d in comparativa_data]
+                efic_jugador_vals = [d['jugador'] for d in comparativa_data]
+                efic_media_vals = [d['media'] for d in comparativa_data]
+                
+                fig.add_trace(go.Bar(
+                    name=jugador_info['nombre_completo'],
+                    x=acciones_nombres,
+                    y=efic_jugador_vals,
+                    marker_color=COLOR_ROJO,
+                    text=[f"{v}%" for v in efic_jugador_vals],
+                    textposition='outside'
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Mitjana Equip',
+                    x=acciones_nombres,
+                    y=efic_media_vals,
+                    marker_color=COLOR_GRIS,
+                    text=[f"{v}%" for v in efic_media_vals],
+                    textposition='outside'
+                ))
+                
+                fig.update_layout(
+                    title="Eficàcia: Jugador vs Mitjana de l'Equip",
+                    xaxis_title="Acció",
+                    yaxis_title="Eficàcia (%)",
+                    barmode='group',
+                    height=400,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                    yaxis=dict(range=[0, max(max(efic_jugador_vals), max(efic_media_vals)) + 15])
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+                
+                # Resumen por acción
+                cols = st.columns(len(comparativa_data))
+                for idx, data in enumerate(comparativa_data):
+                    with cols[idx]:
+                        diff = data['diferencia']
+                        if diff > 5:
+                            color = COLOR_VERDE
+                            icono = "↑"
+                        elif diff < -5:
+                            color = COLOR_ROJO
+                            icono = "↓"
+                        else:
+                            color = COLOR_NARANJA
+                            icono = "→"
+                        
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 0.5rem; background: {COLOR_GRIS}; border-radius: 10px;">
+                            <strong>{data['accion']}</strong><br>
+                            <span style="font-size: 1.5rem; color: {color};">{icono} {diff:+.1f}%</span><br>
+                            <small>vs mitjana</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+        else:
+            st.info("No hi ha dades suficients per comparar")
 
 def pagina_comparativa():
     """Página de comparación de partidos"""
