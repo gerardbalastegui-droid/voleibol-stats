@@ -371,6 +371,39 @@ def obtener_media_equipo(partido_ids):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_ranking_equipo(partido_ids, tipo_accion):
+    """Obtiene el ranking de jugadores del equipo para una acción específica"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                j.id as jugador_id,
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
+                COUNT(*) as total,
+                ROUND((COUNT(*) FILTER (WHERE a.marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia
+            FROM acciones_new a
+            JOIN jugadores j ON a.jugador_id = j.id
+            WHERE a.partido_id IN ({ids_str})
+            AND a.tipo_accion = :tipo
+            GROUP BY j.id, j.nombre, j.apellido
+            HAVING COUNT(*) >= 5
+            ORDER BY eficacia DESC
+        """), conn, params={"tipo": tipo_accion})
+        
+        if not df.empty:
+            df['ranking'] = range(1, len(df) + 1)
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_sideout_contraataque(partido_ids):
     """Obtiene estadísticas de side-out vs contraataque"""
     if isinstance(partido_ids, int):
@@ -1877,7 +1910,7 @@ def pagina_jugador():
                     name='Mitjana Equip',
                     x=acciones_nombres,
                     y=efic_media_vals,
-                    marker_color=COLOR_GRIS,
+                    marker_color=COLOR_NEGRO,
                     text=[f"{v}%" for v in efic_media_vals],
                     textposition='outside'
                 ))
@@ -1918,6 +1951,68 @@ def pagina_jugador():
                         """, unsafe_allow_html=True)
         else:
             st.info("No hi ha dades suficients per comparar")
+        
+        # === RANKING DE L'EQUIP ===
+        st.markdown("---")
+        st.subheader("🏆 Rànquing de l'Equip")
+        
+        nombres_acc = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+        
+        ranking_cols = st.columns(4)
+        
+        for idx, (accion, nombre) in enumerate(nombres_acc.items()):
+            with ranking_cols[idx]:
+                df_ranking = obtener_ranking_equipo(partido_ids, accion)
+                
+                if not df_ranking.empty:
+                    # Buscar posición del jugador actual
+                    jugador_ranking = df_ranking[df_ranking['jugador_id'] == jugador_id]
+                    
+                    if not jugador_ranking.empty:
+                        posicion = int(jugador_ranking['ranking'].iloc[0])
+                        total_jugadores = len(df_ranking)
+                        eficacia = jugador_ranking['eficacia'].iloc[0]
+                        
+                        # Color según posición
+                        if posicion == 1:
+                            color = "#FFD700"  # Oro
+                            emoji = "🥇"
+                        elif posicion == 2:
+                            color = "#C0C0C0"  # Plata
+                            emoji = "🥈"
+                        elif posicion == 3:
+                            color = "#CD7F32"  # Bronce
+                            emoji = "🥉"
+                        elif posicion <= total_jugadores // 2:
+                            color = COLOR_VERDE
+                            emoji = "✓"
+                        else:
+                            color = COLOR_NARANJA
+                            emoji = "↗"
+                        
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px; border-left: 4px solid {color};">
+                            <strong>{nombre}</strong><br>
+                            <span style="font-size: 2rem;">{emoji}</span><br>
+                            <span style="font-size: 1.5rem; font-weight: bold;">{posicion}º</span><br>
+                            <small>de {total_jugadores} jugadors</small><br>
+                            <small style="color: {COLOR_ROJO};">{eficacia}% efic.</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px;">
+                            <strong>{nombre}</strong><br>
+                            <small>Mínim 5 accions</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px;">
+                        <strong>{nombre}</strong><br>
+                        <small>Sense dades</small>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 def pagina_comparativa():
     """Página de comparación de partidos"""
