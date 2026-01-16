@@ -313,6 +313,42 @@ def obtener_estadisticas_jugador(partido_ids, jugador_id):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_evolucion_jugador(partido_ids, jugador_id):
+    """Obtiene la evolución del jugador partido a partido"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                p.id as partido_id,
+                p.rival,
+                p.local,
+                p.fecha,
+                a.tipo_accion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE a.marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE a.marca = '+') as positivos,
+                COUNT(*) FILTER (WHERE a.marca = '=') as errores
+            FROM acciones_new a
+            JOIN partidos_new p ON a.partido_id = p.id
+            WHERE a.partido_id IN ({ids_str}) AND a.jugador_id = :jid
+            GROUP BY p.id, p.rival, p.local, p.fecha, a.tipo_accion
+            ORDER BY p.fecha, p.id
+        """), conn, params={"jid": jugador_id})
+        
+        if not df.empty:
+            df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+            df['eficiencia'] = ((df['puntos'] - df['errores']) / df['total'] * 100).round(1)
+            df['partido_display'] = df.apply(
+                lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
+            )
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_sideout_contraataque(partido_ids):
     """Obtiene estadísticas de side-out vs contraataque"""
     if isinstance(partido_ids, int):
@@ -1686,6 +1722,89 @@ def pagina_jugador():
         })
         
         st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # === EVOLUCIÓN PERSONAL ===
+        st.markdown("---")
+        st.subheader("📈 Evolució Personal")
+        
+        # Solo mostrar si hay más de un partido
+        if len(partido_ids) > 1:
+            df_evolucion = obtener_evolucion_jugador(partido_ids, jugador_id)
+            
+            if not df_evolucion.empty:
+                # Selector de acción para ver evolución
+                accion_evol = st.selectbox(
+                    "Selecciona acció:",
+                    options=['atacar', 'recepción', 'saque', 'bloqueo'],
+                    format_func=lambda x: {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}[x],
+                    key='evolucion_accion'
+                )
+                
+                df_accion = df_evolucion[df_evolucion['tipo_accion'] == accion_evol]
+                
+                if not df_accion.empty:
+                    fig = go.Figure()
+                    
+                    # Línea de eficacia
+                    fig.add_trace(go.Scatter(
+                        x=df_accion['partido_display'],
+                        y=df_accion['eficacia'],
+                        mode='lines+markers+text',
+                        name='Eficàcia',
+                        line=dict(color=COLOR_ROJO, width=3),
+                        marker=dict(size=10),
+                        text=df_accion['eficacia'].apply(lambda x: f'{x}%'),
+                        textposition='top center'
+                    ))
+                    
+                    # Línea de eficiencia
+                    fig.add_trace(go.Scatter(
+                        x=df_accion['partido_display'],
+                        y=df_accion['eficiencia'],
+                        mode='lines+markers+text',
+                        name='Eficiència',
+                        line=dict(color=COLOR_NEGRO, width=3),
+                        marker=dict(size=10),
+                        text=df_accion['eficiencia'].apply(lambda x: f'{x}%'),
+                        textposition='bottom center'
+                    ))
+                    
+                    # Líneas de referencia
+                    fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
+                                  annotation_text="Bo (60%)")
+                    fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
+                                  annotation_text="Regular (40%)")
+                    
+                    fig.update_layout(
+                        title=f"Evolució de {{'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}[accion_evol]}",
+                        xaxis_title="Partit",
+                        yaxis_title="%",
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                        yaxis=dict(range=[min(-10, df_accion['eficiencia'].min() - 10), 
+                                         max(100, df_accion['eficacia'].max() + 10)])
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Indicador de tendencia
+                    if len(df_accion) >= 2:
+                        primera = df_accion['eficacia'].iloc[0]
+                        ultima = df_accion['eficacia'].iloc[-1]
+                        diferencia = ultima - primera
+                        
+                        if diferencia > 5:
+                            st.success(f"📈 **Tendència positiva!** Has millorat un {diferencia:.1f}% en eficàcia")
+                        elif diferencia < -5:
+                            st.error(f"📉 **Tendència negativa.** Has baixat un {abs(diferencia):.1f}% en eficàcia")
+                        else:
+                            st.info(f"➡️ **Rendiment estable.** Variació de {diferencia:+.1f}%")
+                else:
+                    st.info(f"No hi ha dades d'aquesta acció per aquest jugador")
+            else:
+                st.info("No hi ha dades d'evolució")
+        else:
+            st.info("Selecciona 'Tots els partits' per veure l'evolució")
 
 def pagina_comparativa():
     """Página de comparación de partidos"""
