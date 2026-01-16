@@ -1559,7 +1559,7 @@ def pagina_jugador():
         )
         
         partidos['display'] = partidos.apply(
-            lambda x: f"vs {x['rival']}", axis=1
+            lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
         )
         
         opciones_partido = ["Tots els partits"] + partidos['id'].tolist()
@@ -1591,9 +1591,6 @@ def pagina_jugador():
             contexto_txt = f"vs {info_p['rival']}"
         
         st.caption(f"📊 Analitzant: {contexto_txt}")
-        
-        # DEBUG - mostrar qué se está consultando
-        st.info(f"🔍 Debug: jugador_id={jugador_id}, partido_ids={partido_ids}")
         
         # Cargar estadísticas
         df_jugador = obtener_estadisticas_jugador(partido_ids, jugador_id)
