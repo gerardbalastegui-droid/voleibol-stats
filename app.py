@@ -1775,8 +1775,10 @@ def pagina_jugador():
                     fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
                                   annotation_text="Regular (40%)")
                     
+                    nombres_acciones_evol = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+                    
                     fig.update_layout(
-                        title=f"Evolució de {{'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}[accion_evol]}",
+                        title=f"Evolució de {nombres_acciones_evol[accion_evol]}",
                         xaxis_title="Partit",
                         yaxis_title="%",
                         height=400,
