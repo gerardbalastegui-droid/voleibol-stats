@@ -2013,6 +2013,100 @@ def pagina_jugador():
                         <small>Sense dades</small>
                     </div>
                     """, unsafe_allow_html=True)
+        
+        # === PUNTS FORTS I FEBLES ===
+        st.markdown("---")
+        st.subheader("💪 Punts Forts i Febles")
+        
+        if not df_jugador.empty and not df_media_equipo.empty:
+            # Calcular diferencias con la media para cada acción
+            analisis = []
+            nombres_acc = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+            
+            for accion in ['atacar', 'recepción', 'saque', 'bloqueo']:
+                jugador_row = df_jugador[df_jugador['tipo_accion'] == accion]
+                media_row = df_media_equipo[df_media_equipo['tipo_accion'] == accion]
+                
+                if not jugador_row.empty and not media_row.empty:
+                    efic_jugador = float(jugador_row['eficacia'].iloc[0])
+                    efic_media = float(media_row['eficacia_media'].iloc[0])
+                    total = int(jugador_row['total'].iloc[0])
+                    diferencia = efic_jugador - efic_media
+                    
+                    if total >= 5:  # Solo considerar si tiene suficientes acciones
+                        analisis.append({
+                            'accion': accion,
+                            'nombre': nombres_acc[accion],
+                            'eficacia': efic_jugador,
+                            'diferencia': diferencia,
+                            'total': total
+                        })
+            
+            if analisis:
+                # Ordenar por diferencia
+                analisis_ordenado = sorted(analisis, key=lambda x: x['diferencia'], reverse=True)
+                
+                col1, col2 = st.columns(2)
+                
+                # Puntos fuertes (diferencia positiva)
+                with col1:
+                    punts_forts = [a for a in analisis_ordenado if a['diferencia'] > 0]
+                    
+                    st.markdown(f"""
+                    <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_VERDE};">
+                        <h4 style="color: {COLOR_VERDE}; margin: 0;">✅ Punts Forts</h4>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if punts_forts:
+                        for pf in punts_forts:
+                            st.markdown(f"""
+                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: white; border-radius: 5px;">
+                                <strong>{pf['nombre']}</strong>: {pf['eficacia']}% 
+                                <span style="color: {COLOR_VERDE};">(+{pf['diferencia']:.1f}% vs equip)</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("<p style='padding: 0.5rem;'>Cap acció destaca per sobre la mitjana</p>", unsafe_allow_html=True)
+                
+                # Puntos a mejorar (diferencia negativa)
+                with col2:
+                    punts_febles = [a for a in analisis_ordenado if a['diferencia'] < 0]
+                    
+                    st.markdown(f"""
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_ROJO};">
+                        <h4 style="color: {COLOR_ROJO}; margin: 0;">⚠️ A Millorar</h4>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if punts_febles:
+                        for pf in punts_febles:
+                            st.markdown(f"""
+                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: white; border-radius: 5px;">
+                                <strong>{pf['nombre']}</strong>: {pf['eficacia']}% 
+                                <span style="color: {COLOR_ROJO};">({pf['diferencia']:.1f}% vs equip)</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("<p style='padding: 0.5rem;'>Totes les accions estan a la mitjana o per sobre!</p>", unsafe_allow_html=True)
+                
+                # Resumen general
+                if analisis_ordenado:
+                    mejor = analisis_ordenado[0]
+                    peor = analisis_ordenado[-1]
+                    
+                    st.markdown("---")
+                    st.markdown(f"""
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4>📊 Resum</h4>
+                        <p><strong>El teu punt fort és {mejor['nombre'].lower()}</strong> ({mejor['eficacia']}% eficàcia)</p>
+                        <p><strong>Pots millorar en {peor['nombre'].lower()}</strong> ({peor['eficacia']}% eficàcia)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("Necessites mínim 5 accions per veure l'anàlisi")
+        else:
+            st.info("No hi ha dades suficients per l'anàlisi")
 
 def pagina_comparativa():
     """Página de comparación de partidos"""
