@@ -22,7 +22,6 @@ COLOR_BLANCO = "#FFFFFF"
 COLOR_NEGRO = "#000000"
 COLOR_AMARILLO = "#F4D000"
 COLOR_GRIS = "#F2F2F2"
-COLOR_GRISOSCURO = "#31333F"
 COLOR_VERDE = "#4CAF50"
 COLOR_NARANJA = "#FF9800"
 
@@ -241,6 +240,44 @@ def obtener_resumen_acciones_multi(partido_ids):
         # Calcular eficacia y eficiencia
         df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
         df['eficiencia'] = ((df['puntos'] - df['errores']) / df['total'] * 100).round(1)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_estadisticas_jugadores_partido(partido_ids):
+    """Obtiene estadísticas detalladas por jugador para un partido"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
+                a.tipo_accion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE a.marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE a.marca = '+') as positivos,
+                COUNT(*) FILTER (WHERE a.marca = '!') as neutros,
+                COUNT(*) FILTER (WHERE a.marca = '-') as negativos,
+                COUNT(*) FILTER (WHERE a.marca = '/') as errores_forzados,
+                COUNT(*) FILTER (WHERE a.marca = '=') as errores
+            FROM acciones_new a
+            JOIN jugadores j ON a.jugador_id = j.id
+            WHERE a.partido_id IN ({ids_str})
+            AND a.tipo_accion IN ('atacar', 'recepción', 'saque', 'bloqueo')
+            GROUP BY j.nombre, j.apellido, a.tipo_accion
+            ORDER BY j.apellido, a.tipo_accion
+        """), conn)
+        
+        if not df.empty:
+            df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+            df['eficiencia'] = ((df['puntos'] - df['errores']) / df['total'] * 100).round(1)
         
         return df
 
@@ -1096,7 +1133,6 @@ def pagina_inicio():
     
     - **📊 Partit**: Estadístiques completes d'un partit
     - **👤 Jugador**: Anàlisi individual de jugadors
-    - **🎴 Fitxes**: Fitxes generals del jugador
     - **📈 Comparativa**: Compara dos partits
     
     ---
@@ -1261,6 +1297,67 @@ def pagina_partido():
             'eficiencia': 'Eficiència (%)'
         })
         st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # Tabla detallada por jugador
+        st.subheader("👥 Detall per Jugador")
+        
+        df_jugadores_stats = obtener_estadisticas_jugadores_partido(partido_ids)
+        
+        if not df_jugadores_stats.empty:
+            # Pivotar para tener una fila por jugador con todas las acciones
+            acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
+            nombres_cat = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+            
+            # Crear tabla pivotada
+            jugadores_unicos = df_jugadores_stats['jugador'].unique()
+            
+            tabla_data = []
+            for jugador in jugadores_unicos:
+                fila = {'Jugador': jugador}
+                df_jug = df_jugadores_stats[df_jugadores_stats['jugador'] == jugador]
+                
+                for accion in acciones:
+                    df_acc = df_jug[df_jug['tipo_accion'] == accion]
+                    nombre = nombres_cat[accion]
+                    
+                    if not df_acc.empty:
+                        row = df_acc.iloc[0]
+                        fila[f'{nombre} #'] = int(row['puntos'])
+                        fila[f'{nombre} +'] = int(row['positivos'])
+                        fila[f'{nombre} !'] = int(row['neutros'])
+                        fila[f'{nombre} -'] = int(row['negativos'])
+                        fila[f'{nombre} /'] = int(row['errores_forzados'])
+                        fila[f'{nombre} ='] = int(row['errores'])
+                        fila[f'{nombre} Efic%'] = row['eficacia']
+                        fila[f'{nombre} Efcn%'] = row['eficiencia']
+                    else:
+                        fila[f'{nombre} #'] = '-'
+                        fila[f'{nombre} +'] = '-'
+                        fila[f'{nombre} !'] = '-'
+                        fila[f'{nombre} -'] = '-'
+                        fila[f'{nombre} /'] = '-'
+                        fila[f'{nombre} ='] = '-'
+                        fila[f'{nombre} Efic%'] = '-'
+                        fila[f'{nombre} Efcn%'] = '-'
+                
+                tabla_data.append(fila)
+            
+            df_tabla_jugadores = pd.DataFrame(tabla_data)
+            
+            # Selector de acción para mostrar
+            accion_mostrar = st.selectbox(
+                "Filtrar per acció:",
+                options=['Totes', 'Atac', 'Recepció', 'Saque', 'Bloqueig'],
+                key='filtro_accion_jugadores'
+            )
+            
+            if accion_mostrar == 'Totes':
+                st.dataframe(df_tabla_jugadores, use_container_width=True, hide_index=True)
+            else:
+                cols_mostrar = ['Jugador'] + [c for c in df_tabla_jugadores.columns if c.startswith(accion_mostrar)]
+                st.dataframe(df_tabla_jugadores[cols_mostrar], use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha dades de jugadors")
     
     with tab2:
         if not df_sideout.empty:
@@ -1862,7 +1959,6 @@ def pagina_fichas():
             <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
                 <h4 style="color: {COLOR_ROJO}; margin: 0;">EFICÀCIA ATAC</h4>
                 <p style="font-size: 3rem; font-weight: bold; color: {color_efic}; margin: 0.5rem 0;">{eficacia}%</p>
-                <small style="color: {COLOR_GRISOSCURO};">#  i  +</small>
             </div>
             """, unsafe_allow_html=True)
         
