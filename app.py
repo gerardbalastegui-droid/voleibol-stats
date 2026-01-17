@@ -22,6 +22,7 @@ COLOR_BLANCO = "#FFFFFF"
 COLOR_NEGRO = "#000000"
 COLOR_AMARILLO = "#F4D000"
 COLOR_GRIS = "#F2F2F2"
+COLOR_GRISOSCURO = "#31333f"
 COLOR_VERDE = "#4CAF50"
 COLOR_NARANJA = "#FF9800"
 
@@ -2510,6 +2511,7 @@ def pagina_fichas():
             <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
                 <h4 style="color: {COLOR_ROJO}; margin: 0;">EFICÀCIA ATAC</h4>
                 <p style="font-size: 3rem; font-weight: bold; color: {color_efic}; margin: 0.5rem 0;">{eficacia}%</p>
+                <small style="color: {COLOR_GRISOSCURO};"># i +</small>
             </div>
             """, unsafe_allow_html=True)
         
