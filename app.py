@@ -1327,9 +1327,11 @@ def pagina_partido():
         partido_ids = [partido_seleccionado]
         info_partido = partidos[partidos['id'] == partido_seleccionado].iloc[0]
         titulo_partido = f"vs {info_partido['rival']}"
+        resultado = info_partido.get('resultado')
+        resultado_txt = resultado if resultado else '-'
         info_extra = f"""**Tipus:** {'Local' if info_partido['local'] else 'Visitant'} | 
         **Fase:** {info_partido.get('fase', '-')} |
-        **Resultat:** {info_partido.get('resultado', '-')}"""
+        **Resultat:** {resultado_txt}"""
     
     st.markdown(f"### 🏐 {titulo_partido}")
     st.markdown(info_extra)
