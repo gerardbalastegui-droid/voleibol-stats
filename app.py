@@ -2683,13 +2683,30 @@ def sidebar_contexto():
         st.session_state.fase_id = None
     
     st.sidebar.markdown("---")
+
+# =================================
+# MODO ADMIN
+# =================================
+es_admin = False
+with st.sidebar.expander("🔐 Admin"):
+    password = st.text_input("Contrasenya:", type="password", key="admin_password")
+    if password == st.secrets.get("ADMIN_PASSWORD", "tu_contraseña_temporal"):
+        es_admin = True
+        st.success("✅ Mode admin activat")
+
+st.sidebar.markdown("---")
     
     # Navegación
     st.sidebar.subheader("📍 Navegació")
     
+    if es_admin:
+        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar"]
+    else:
+        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
+
     pagina = st.sidebar.radio(
         "Selecciona secció:",
-        options=["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar"],
+        options=opciones,
         key='navegacion'
     )
     
