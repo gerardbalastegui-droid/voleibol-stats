@@ -792,6 +792,191 @@ def obtener_ficha_jugador(partido_ids, jugador_id):
             'valor_total': valor[0] if valor else 0
         }
 
+@st.cache_data(ttl=60)
+def obtener_badges_equipo(equipo_id, temporada_id, fase_id=None):
+    """Obtiene los badges/logros del equipo"""
+    
+    # Cargar partidos
+    partidos = cargar_partidos(equipo_id, temporada_id, fase_id)
+    
+    if partidos.empty:
+        return []
+    
+    partido_ids = partidos['id'].tolist()
+    badges = []
+    
+    with get_engine().connect() as conn:
+        # Para cada partido, buscar logros
+        for _, partido in partidos.iterrows():
+            pid = partido['id']
+            rival = partido['rival']
+            fecha = partido['fecha']
+            local = partido['local']
+            
+            # === MEJOR ATACANTE DEL PARTIDO ===
+            mejor_atacante = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as total,
+                    ROUND((COUNT(*) FILTER (WHERE a.marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid AND a.tipo_accion = 'atacar'
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 5
+                ORDER BY eficacia DESC
+                LIMIT 1
+            """), {"pid": pid}).fetchone()
+            
+            if mejor_atacante and mejor_atacante[2] and mejor_atacante[2] >= 50:
+                badges.append({
+                    'tipo': 'gold',
+                    'icono': '🏆',
+                    'titulo': 'Millor Atacant',
+                    'descripcion': f"{mejor_atacante[0]} - {mejor_atacante[2]}% eficàcia vs {rival}",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+            
+            # === RÉCORD DE ACES (3+) ===
+            aces_record = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as aces
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid AND a.tipo_accion = 'saque' AND a.marca = '#'
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 3
+                ORDER BY aces DESC
+                LIMIT 1
+            """), {"pid": pid}).fetchone()
+            
+            if aces_record:
+                badges.append({
+                    'tipo': 'fire',
+                    'icono': '🔥',
+                    'titulo': 'Màquina de Aces',
+                    'descripcion': f"{aces_record[0]} - {aces_record[1]} aces vs {rival}!",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+            
+            # === 10+ PUNTOS DIRECTOS ===
+            puntos_record = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as puntos
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid 
+                AND a.tipo_accion IN ('atacar', 'saque', 'bloqueo') 
+                AND a.marca = '#'
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 10
+                ORDER BY puntos DESC
+                LIMIT 1
+            """), {"pid": pid}).fetchone()
+            
+            if puntos_record:
+                badges.append({
+                    'tipo': 'gold',
+                    'icono': '⭐',
+                    'titulo': '10+ Punts',
+                    'descripcion': f"{puntos_record[0]} - {puntos_record[1]} punts directes vs {rival}!",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+            
+            # === PARTIDO PERFECTO (0 errores, mínimo 10 acciones) ===
+            partido_perfecto = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE a.marca = '=') as errores
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 10 AND COUNT(*) FILTER (WHERE a.marca = '=') = 0
+            """), {"pid": pid}).fetchall()
+            
+            for jugador in partido_perfecto:
+                badges.append({
+                    'tipo': 'perfect',
+                    'icono': '💯',
+                    'titulo': 'Partit Perfecte',
+                    'descripcion': f"{jugador[0]} - 0 errors en {jugador[1]} accions vs {rival}!",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+            
+            # === MUR DE BLOC (3+ bloqueos punto) ===
+            mur_bloc = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as blocs
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid AND a.tipo_accion = 'bloqueo' AND a.marca = '#'
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 3
+                ORDER BY blocs DESC
+                LIMIT 1
+            """), {"pid": pid}).fetchone()
+            
+            if mur_bloc:
+                badges.append({
+                    'tipo': 'fire',
+                    'icono': '🧱',
+                    'titulo': 'El Muro',
+                    'descripcion': f"{mur_bloc[0]} - {mur_bloc[1]} blocs punt vs {rival}!",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+            
+            # === MEJOR RECEPCIÓN (60%+ con mínimo 10 recepciones) ===
+            mejor_receptor = conn.execute(text("""
+                SELECT 
+                    CASE WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                         THEN j.nombre || ' ' || j.apellido 
+                         ELSE j.apellido END AS jugador,
+                    COUNT(*) as total,
+                    ROUND((COUNT(*) FILTER (WHERE a.marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                WHERE a.partido_id = :pid AND a.tipo_accion = 'recepción'
+                GROUP BY j.nombre, j.apellido
+                HAVING COUNT(*) >= 10
+                ORDER BY eficacia DESC
+                LIMIT 1
+            """), {"pid": pid}).fetchone()
+            
+            if mejor_receptor and mejor_receptor[2] and mejor_receptor[2] >= 60:
+                badges.append({
+                    'tipo': 'perfect',
+                    'icono': '🎯',
+                    'titulo': 'Recepció d\'Or',
+                    'descripcion': f"{mejor_receptor[0]} - {mejor_receptor[2]}% eficàcia vs {rival}",
+                    'fecha': fecha,
+                    'partido_id': pid
+                })
+    
+    # Ordenar por fecha (más recientes primero)
+    badges.sort(key=lambda x: x['fecha'] if x['fecha'] else '', reverse=True)
+    
+    return badges
+
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # =============================================================================
