@@ -2603,6 +2603,12 @@ def pagina_fichas():
         else:
             st.success("✅ Cap error registrat!")
 
+
+def pagina_importar():
+    """Página para importar partidos desde Excel"""
+    from importar_partido_streamlit import pagina_importar_partido
+    pagina_importar_partido(get_engine)
+
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
 # =============================================================================
@@ -2683,11 +2689,13 @@ def sidebar_contexto():
     
     pagina = st.sidebar.radio(
         "Selecciona secció:",
-        options=["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"],
+        options=["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar"],
         key='navegacion'
     )
     
     return pagina
+
+
 
 # =============================================================================
 # MAIN
@@ -2709,6 +2717,8 @@ def main():
         pagina_fichas()
     elif pagina == "📈 Comparativa":
         pagina_comparativa()
+    elif pagina == "📤 Importar":
+        pagina_importar()
 
 if __name__ == "__main__":
     main()
