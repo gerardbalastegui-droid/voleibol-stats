@@ -2620,6 +2620,92 @@ def pagina_comparativa():
                 )
                 
                 st.plotly_chart(fig_radar, use_container_width=True, config={'staticPlot': True})
+
+            # === RADAR COLOCADORES ===
+            # Verificar si alguno tiene colocaciones
+            df_col1 = df_jug1[df_jug1['tipo_accion'] == 'colocación']
+            df_col2 = df_jug2[df_jug2['tipo_accion'] == 'colocación']
+            
+            if not df_col1.empty or not df_col2.empty:
+                st.markdown("---")
+                st.subheader("🎯 Comparativa de Col·locació")
+                
+                # Obtener datos de colocación
+                marcas = ['#', '+', '!', '-', '=']
+                nombres_marcas = ['Punt (#)', 'Positiu (+)', 'Neutre (!)', 'Negatiu (-)', 'Error (=)']
+                campos = ['puntos', 'positivos', 'neutros', 'negativos', 'errores']
+                
+                valores_col1 = []
+                valores_col2 = []
+                
+                total1 = int(df_col1['total'].iloc[0]) if not df_col1.empty else 1
+                total2 = int(df_col2['total'].iloc[0]) if not df_col2.empty else 1
+                
+                for campo in campos:
+                    v1 = int(df_col1[campo].iloc[0]) if not df_col1.empty else 0
+                    v2 = int(df_col2[campo].iloc[0]) if not df_col2.empty else 0
+                    # Convertir a porcentaje
+                    valores_col1.append(round(v1 / total1 * 100, 1))
+                    valores_col2.append(round(v2 / total2 * 100, 1))
+                
+                # Cerrar el radar
+                nombres_marcas_radar = nombres_marcas + [nombres_marcas[0]]
+                valores_col1_radar = valores_col1 + [valores_col1[0]]
+                valores_col2_radar = valores_col2 + [valores_col2[0]]
+                
+                fig_col = go.Figure()
+                
+                fig_col.add_trace(go.Scatterpolar(
+                    r=valores_col1_radar,
+                    theta=nombres_marcas_radar,
+                    fill='toself',
+                    fillcolor=f'rgba(200, 16, 46, 0.3)',
+                    line_color=COLOR_ROJO,
+                    name=f"{jugador1_nombre} ({total1} col.)"
+                ))
+                
+                fig_col.add_trace(go.Scatterpolar(
+                    r=valores_col2_radar,
+                    theta=nombres_marcas_radar,
+                    fill='toself',
+                    fillcolor=f'rgba(0, 0, 0, 0.2)',
+                    line_color=COLOR_NEGRO,
+                    name=f"{jugador2_nombre} ({total2} col.)"
+                ))
+                
+                fig_col.update_layout(
+                    polar=dict(
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0, 100]
+                        )
+                    ),
+                    title="Distribució de Marques en Col·locació (%)",
+                    height=450,
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+                )
+                
+                st.plotly_chart(fig_col, use_container_width=True, config={'staticPlot': True})
+                
+                # Métricas de colocación
+                col1, col2 = st.columns(2)
+                
+                efic_col1 = float(df_col1['eficacia'].iloc[0]) if not df_col1.empty else 0
+                efic_col2 = float(df_col2['eficacia'].iloc[0]) if not df_col2.empty else 0
+                
+                with col1:
+                    st.metric(
+                        f"🎯 {jugador1_nombre}",
+                        f"{efic_col1}% eficàcia",
+                        f"{total1} col·locacions"
+                    )
+                
+                with col2:
+                    st.metric(
+                        f"🎯 {jugador2_nombre}",
+                        f"{efic_col2}% eficàcia",
+                        f"{total2} col·locacions"
+                    )
             
             # === PUNTOS DIRECTOS ===
             st.markdown("---")
