@@ -2633,7 +2633,7 @@ def pagina_comparativa():
                 # Obtener datos de colocación
                 marcas = ['#', '+', '!', '-', '=']
                 nombres_marcas = ['1v0 (#)', '1v1 (+)', '1v2/3 (!)', 'Negatiu (-)', 'Error (=)']
-                campos = ['1v0', '1v1', '1v2/3', 'negativos', 'errores']
+                campos = ['puntos', 'positivos', 'neutros', 'negativos', 'errores']
                 
                 valores_col1 = []
                 valores_col2 = []
