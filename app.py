@@ -2684,17 +2684,17 @@ def sidebar_contexto():
     
     st.sidebar.markdown("---")
 
-# =================================
-# MODO ADMIN
-# =================================
-es_admin = False
-with st.sidebar.expander("🔐 Admin"):
-    password = st.text_input("Contrasenya:", type="password", key="admin_password")
-    if password == st.secrets.get("ADMIN_PASSWORD", "tu_contraseña_temporal"):
-        es_admin = True
-        st.success("✅ Mode admin activat")
+    # =================================
+    # MODO ADMIN
+    # =================================
+    es_admin = False
+    with st.sidebar.expander("🔐 Admin"):
+        password = st.text_input("Contrasenya:", type="password", key="admin_password")
+        if password == st.secrets.get("ADMIN_PASSWORD", "tu_contraseña_temporal"):
+            es_admin = True
+            st.success("✅ Mode admin activat")
 
-st.sidebar.markdown("---")
+    st.sidebar.markdown("---")
     
     # Navegación
     st.sidebar.subheader("📍 Navegació")
