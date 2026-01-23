@@ -1704,6 +1704,17 @@ def pagina_jugador():
         
         st.markdown("---")
         
+        # Determinar partidos a analizar
+        if partido_seleccionado == "Tots els partits":
+            partido_ids = partidos['id'].tolist()
+            contexto_txt = f"Tots els partits ({len(partido_ids)})"
+        else:
+            partido_ids = [partido_seleccionado]
+            info_p = partidos[partidos['id'] == partido_seleccionado].iloc[0]
+            contexto_txt = f"vs {info_p['rival']}"
+        
+        st.caption(f"📊 Analitzant: {contexto_txt}")
+
         # === RACHA ACTUAL ===
         if partido_seleccionado == "Tots els partits" and len(partido_ids) >= 2:
             st.subheader("🔥 Ratxa Actual")
@@ -1767,17 +1778,6 @@ def pagina_jugador():
                     st.info("📊 Juga més partits per veure les teves ratxes!")
             
             st.markdown("---")
-        
-        # Determinar partidos a analizar
-        if partido_seleccionado == "Tots els partits":
-            partido_ids = partidos['id'].tolist()
-            contexto_txt = f"Tots els partits ({len(partido_ids)})"
-        else:
-            partido_ids = [partido_seleccionado]
-            info_p = partidos[partidos['id'] == partido_seleccionado].iloc[0]
-            contexto_txt = f"vs {info_p['rival']}"
-        
-        st.caption(f"📊 Analitzant: {contexto_txt}")
         
         # Cargar estadísticas
         df_jugador = obtener_estadisticas_jugador(partido_ids, jugador_id)
