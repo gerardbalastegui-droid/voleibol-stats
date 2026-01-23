@@ -2617,63 +2617,321 @@ def pagina_admin():
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["🏆 Fases", "📋 Altres"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors"])
     
+    # =================================
+    # TAB 1: FASES
+    # =================================
     with tab1:
         st.subheader("🏆 Gestió de Fases")
         
-        # Verificar que hay temporada seleccionada
         if not st.session_state.get('temporada_id'):
             st.warning("⚠️ Selecciona primer una temporada al menú lateral")
-            return
-        
-        # Mostrar fases actuales
-        st.markdown("**Fases actuals:**")
-        fases_actuales = cargar_fases(st.session_state.temporada_id)
-        
-        if not fases_actuales.empty:
-            st.dataframe(fases_actuales, use_container_width=True, hide_index=True)
         else:
-            st.info("No hi ha fases creades per aquesta temporada")
+            # Mostrar fases actuales
+            st.markdown("**Fases actuals:**")
+            fases_actuales = cargar_fases(st.session_state.temporada_id)
+            
+            if not fases_actuales.empty:
+                st.dataframe(fases_actuales, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hi ha fases creades per aquesta temporada")
+            
+            st.markdown("---")
+            
+            # Formulario para añadir nueva fase
+            st.markdown("**➕ Afegir nova fase:**")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                nuevo_nombre_fase = st.text_input("Nom de la fase:", placeholder="Ex: Segona Fase", key="nueva_fase_nombre")
+            
+            with col2:
+                nuevo_orden_fase = st.number_input("Ordre:", min_value=1, value=len(fases_actuales) + 1, key="nueva_fase_orden")
+            
+            if st.button("✅ Crear fase", type="primary", key="btn_crear_fase"):
+                if not nuevo_nombre_fase:
+                    st.error("❌ Has d'escriure un nom per la fase")
+                else:
+                    try:
+                        with get_engine().begin() as conn:
+                            conn.execute(text("""
+                                INSERT INTO fases (nombre, temporada_id, orden)
+                                VALUES (:nombre, :temporada_id, :orden)
+                            """), {
+                                "nombre": nuevo_nombre_fase,
+                                "temporada_id": st.session_state.temporada_id,
+                                "orden": nuevo_orden_fase
+                            })
+                        
+                        st.success(f"✅ Fase '{nuevo_nombre_fase}' creada correctament!")
+                        st.cache_data.clear()
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error creant la fase: {str(e)}")
+            
+            # Eliminar fase
+            st.markdown("---")
+            st.markdown("**🗑️ Eliminar fase:**")
+            
+            if not fases_actuales.empty:
+                fase_eliminar = st.selectbox(
+                    "Selecciona fase a eliminar:",
+                    options=[None] + fases_actuales['id'].tolist(),
+                    format_func=lambda x: "Selecciona..." if x is None else fases_actuales[fases_actuales['id'] == x]['nombre'].iloc[0],
+                    key="fase_eliminar"
+                )
+                
+                if fase_eliminar:
+                    st.warning("⚠️ Això eliminarà la fase però NO els partits associats (quedaran sense fase)")
+                    if st.button("🗑️ Eliminar fase", type="secondary", key="btn_eliminar_fase"):
+                        try:
+                            with get_engine().begin() as conn:
+                                # Quitar fase de los partidos
+                                conn.execute(text("UPDATE partidos_new SET fase_id = NULL WHERE fase_id = :fid"), {"fid": fase_eliminar})
+                                # Eliminar fase
+                                conn.execute(text("DELETE FROM fases WHERE id = :fid"), {"fid": fase_eliminar})
+                            
+                            st.success("✅ Fase eliminada!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+    
+    # =================================
+    # TAB 2: EQUIPOS
+    # =================================
+    with tab2:
+        st.subheader("🏐 Gestió d'Equips")
+        
+        # Mostrar equipos actuales
+        st.markdown("**Equips actuals:**")
+        equipos_actuales = cargar_equipos()
+        
+        if not equipos_actuales.empty:
+            st.dataframe(equipos_actuales[['id', 'nombre', 'equipo_letra', 'nombre_completo']], use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha equips creats")
         
         st.markdown("---")
         
-        # Formulario para añadir nueva fase
-        st.markdown("**➕ Afegir nova fase:**")
+        # Formulario para añadir nuevo equipo
+        st.markdown("**➕ Afegir nou equip:**")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            nuevo_nombre = st.text_input("Nom de la fase:", placeholder="Ex: Segona Fase")
+            nuevo_nombre_equipo = st.text_input("Nom del club:", placeholder="Ex: CV Barcelona", key="nuevo_equipo_nombre")
         
         with col2:
-            nuevo_orden = st.number_input("Ordre:", min_value=1, value=len(fases_actuales) + 1)
+            nueva_letra_equipo = st.text_input("Lletra equip (opcional):", placeholder="Ex: A, B, C...", key="nuevo_equipo_letra")
         
-        if st.button("✅ Crear fase", type="primary"):
-            if not nuevo_nombre:
-                st.error("❌ Has d'escriure un nom per la fase")
+        if st.button("✅ Crear equip", type="primary", key="btn_crear_equipo"):
+            if not nuevo_nombre_equipo:
+                st.error("❌ Has d'escriure un nom per l'equip")
             else:
                 try:
                     with get_engine().begin() as conn:
                         conn.execute(text("""
-                            INSERT INTO fases (nombre, temporada_id, orden)
-                            VALUES (:nombre, :temporada_id, :orden)
+                            INSERT INTO equipos (nombre, equipo_letra)
+                            VALUES (:nombre, :letra)
                         """), {
-                            "nombre": nuevo_nombre,
-                            "temporada_id": st.session_state.temporada_id,
-                            "orden": nuevo_orden
+                            "nombre": nuevo_nombre_equipo,
+                            "letra": nueva_letra_equipo if nueva_letra_equipo else None
                         })
                     
-                    st.success(f"✅ Fase '{nuevo_nombre}' creada correctament!")
+                    st.success(f"✅ Equip '{nuevo_nombre_equipo}' creat correctament!")
                     st.cache_data.clear()
                     st.rerun()
                     
                 except Exception as e:
-                    st.error(f"❌ Error creant la fase: {str(e)}")
+                    st.error(f"❌ Error creant l'equip: {str(e)}")
     
-    with tab2:
-        st.subheader("📋 Altres opcions")
-        st.info("Pròximament: gestió d'equips, temporades, jugadors...")
+    # =================================
+    # TAB 3: TEMPORADAS
+    # =================================
+    with tab3:
+        st.subheader("📅 Gestió de Temporades")
+        
+        # Mostrar temporadas actuales
+        st.markdown("**Temporades actuals:**")
+        temporadas_actuales = cargar_temporadas()
+        
+        if not temporadas_actuales.empty:
+            st.dataframe(temporadas_actuales, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha temporades creades")
+        
+        st.markdown("---")
+        
+        # Formulario para añadir nueva temporada
+        st.markdown("**➕ Afegir nova temporada:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nuevo_nombre_temp = st.text_input("Nom de la temporada:", placeholder="Ex: 2025-2026", key="nueva_temp_nombre")
+        
+        with col2:
+            nueva_temp_activa = st.checkbox("Temporada activa", value=True, key="nueva_temp_activa")
+        
+        if st.button("✅ Crear temporada", type="primary", key="btn_crear_temp"):
+            if not nuevo_nombre_temp:
+                st.error("❌ Has d'escriure un nom per la temporada")
+            else:
+                try:
+                    with get_engine().begin() as conn:
+                        # Si es activa, desactivar las demás
+                        if nueva_temp_activa:
+                            conn.execute(text("UPDATE temporadas SET activa = false"))
+                        
+                        conn.execute(text("""
+                            INSERT INTO temporadas (nombre, activa)
+                            VALUES (:nombre, :activa)
+                        """), {
+                            "nombre": nuevo_nombre_temp,
+                            "activa": nueva_temp_activa
+                        })
+                    
+                    st.success(f"✅ Temporada '{nuevo_nombre_temp}' creada correctament!")
+                    st.cache_data.clear()
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error creant la temporada: {str(e)}")
+    
+    # =================================
+    # TAB 4: JUGADORES
+    # =================================
+    with tab4:
+        st.subheader("👥 Gestió de Jugadors")
+        
+        if not st.session_state.get('equipo_id'):
+            st.warning("⚠️ Selecciona primer un equip al menú lateral")
+        else:
+            # Mostrar jugadores actuales
+            st.markdown(f"**Jugadors de {st.session_state.get('equipo_nombre', '')}:**")
+            jugadores_actuales = cargar_jugadores(st.session_state.equipo_id)
+            
+            if not jugadores_actuales.empty:
+                st.dataframe(jugadores_actuales[['id', 'nombre', 'apellido', 'dorsal', 'posicion']], use_container_width=True, hide_index=True)
+            else:
+                st.info("No hi ha jugadors en aquest equip")
+            
+            st.markdown("---")
+            
+            # Formulario para añadir nuevo jugador
+            st.markdown("**➕ Afegir nou jugador:**")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                nuevo_nombre_jug = st.text_input("Nom:", placeholder="Ex: Marc", key="nuevo_jug_nombre")
+                nuevo_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=0, key="nuevo_jug_dorsal")
+            
+            with col2:
+                nuevo_apellido_jug = st.text_input("Cognom:", placeholder="Ex: Garcia", key="nuevo_jug_apellido")
+                nueva_posicion = st.selectbox(
+                    "Posició:",
+                    options=[None, "Col·locador", "Oposat", "Central", "Receptor", "Líbero"],
+                    key="nuevo_jug_posicion"
+                )
+            
+            if st.button("✅ Crear jugador", type="primary", key="btn_crear_jug"):
+                if not nuevo_apellido_jug:
+                    st.error("❌ Has d'escriure almenys el cognom del jugador")
+                else:
+                    try:
+                        with get_engine().begin() as conn:
+                            conn.execute(text("""
+                                INSERT INTO jugadores (nombre, apellido, dorsal, posicion, equipo_id, activo)
+                                VALUES (:nombre, :apellido, :dorsal, :posicion, :equipo_id, true)
+                            """), {
+                                "nombre": nuevo_nombre_jug if nuevo_nombre_jug else None,
+                                "apellido": nuevo_apellido_jug,
+                                "dorsal": nuevo_dorsal if nuevo_dorsal > 0 else None,
+                                "posicion": nueva_posicion,
+                                "equipo_id": st.session_state.equipo_id
+                            })
+                        
+                        st.success(f"✅ Jugador '{nuevo_apellido_jug}' creat correctament!")
+                        st.cache_data.clear()
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error creant el jugador: {str(e)}")
+            
+            # Editar/Desactivar jugador
+            st.markdown("---")
+            st.markdown("**✏️ Editar jugador:**")
+            
+            if not jugadores_actuales.empty:
+                jug_editar = st.selectbox(
+                    "Selecciona jugador:",
+                    options=[None] + jugadores_actuales['id'].tolist(),
+                    format_func=lambda x: "Selecciona..." if x is None else jugadores_actuales[jugadores_actuales['id'] == x]['nombre_completo'].iloc[0],
+                    key="jug_editar"
+                )
+                
+                if jug_editar:
+                    jug_info = jugadores_actuales[jugadores_actuales['id'] == jug_editar].iloc[0]
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edit_nombre = st.text_input("Nom:", value=jug_info['nombre'] or "", key="edit_jug_nombre")
+                        edit_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=int(jug_info['dorsal']) if jug_info['dorsal'] else 0, key="edit_jug_dorsal")
+                    
+                    with col2:
+                        edit_apellido = st.text_input("Cognom:", value=jug_info['apellido'] or "", key="edit_jug_apellido")
+                        posiciones = [None, "Col·locador", "Oposat", "Central", "Receptor", "Líbero"]
+                        pos_actual = jug_info['posicion'] if jug_info['posicion'] in posiciones else None
+                        edit_posicion = st.selectbox(
+                            "Posició:",
+                            options=posiciones,
+                            index=posiciones.index(pos_actual) if pos_actual else 0,
+                            key="edit_jug_posicion"
+                        )
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("💾 Guardar canvis", type="primary", key="btn_guardar_jug"):
+                            try:
+                                with get_engine().begin() as conn:
+                                    conn.execute(text("""
+                                        UPDATE jugadores 
+                                        SET nombre = :nombre, apellido = :apellido, dorsal = :dorsal, posicion = :posicion
+                                        WHERE id = :id
+                                    """), {
+                                        "nombre": edit_nombre if edit_nombre else None,
+                                        "apellido": edit_apellido,
+                                        "dorsal": edit_dorsal if edit_dorsal > 0 else None,
+                                        "posicion": edit_posicion,
+                                        "id": jug_editar
+                                    })
+                                
+                                st.success("✅ Jugador actualitzat!")
+                                st.cache_data.clear()
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
+                    
+                    with col2:
+                        if st.button("🚫 Desactivar jugador", type="secondary", key="btn_desactivar_jug"):
+                            try:
+                                with get_engine().begin() as conn:
+                                    conn.execute(text("UPDATE jugadores SET activo = false WHERE id = :id"), {"id": jug_editar})
+                                
+                                st.success("✅ Jugador desactivat!")
+                                st.cache_data.clear()
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
 
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
