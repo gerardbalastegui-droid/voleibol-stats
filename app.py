@@ -1741,7 +1741,7 @@ def pagina_jugador():
                                 break
                         
                         if racha_mejora >= 2:
-                            rachas.append(f"📈 Llevas **{racha_mejora} partits** millorant en **{nombre.lower()}**!")
+                            rachas.append(f"📈 Portes **{racha_mejora} partits** millorant en **{nombre.lower()}**!")
                         
                         # Mejor partido
                         mejor_partido = df_accion.loc[df_accion['eficacia'].idxmax()]
