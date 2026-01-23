@@ -3019,6 +3019,120 @@ def pagina_fichas():
         else:
             st.success("✅ Cap error registrat!")
 
+        # === DESTACAT DEL PARTIT ===
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("🏆 Destacat")
+        
+        # Obtener rankings del equipo para ver si es el mejor en algo
+        destacados = []
+        
+        for accion, nombre, icono in [('atacar', 'Atac', '🔥'), ('saque', 'Saque', '🎯'), ('bloqueo', 'Bloqueig', '🧱'), ('recepción', 'Recepció', '🏐')]:
+            df_ranking = obtener_ranking_equipo(partido_ids, accion)
+            
+            if not df_ranking.empty:
+                # Ver si el jugador está en el top 3
+                jugador_en_ranking = df_ranking[df_ranking['jugador_id'] == jugador_id]
+                
+                if not jugador_en_ranking.empty:
+                    posicion = int(jugador_en_ranking['ranking'].iloc[0])
+                    
+                    if posicion == 1:
+                        destacados.append(f"{icono} **Millor de l'equip** en {nombre.lower()}!")
+                    elif posicion == 2:
+                        destacados.append(f"{icono} **2n millor** en {nombre.lower()}")
+                    elif posicion == 3:
+                        destacados.append(f"{icono} **3r millor** en {nombre.lower()}")
+        
+        if destacados:
+            cols = st.columns(2)
+            for idx, dest in enumerate(destacados):
+                with cols[idx % 2]:
+                    st.success(dest)
+        else:
+            st.info("Continua treballant per destacar! 💪")
+        
+        # === COMPARATIVA AMB LA SEVA MITJANA ===
+        if partido_seleccionado != "tots" and len(partidos) > 1:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.subheader("📊 vs La Teva Mitjana")
+            
+            # Obtener media del jugador en todos los partidos
+            todos_partido_ids = partidos['id'].tolist()
+            df_media_jugador = obtener_estadisticas_jugador(todos_partido_ids, jugador_id)
+            df_partido_actual = obtener_estadisticas_jugador(partido_ids, jugador_id)
+            
+            if not df_media_jugador.empty and not df_partido_actual.empty:
+                comparativas = []
+                
+                for accion, nombre in [('atacar', 'Atac'), ('recepción', 'Recepció'), ('saque', 'Saque')]:
+                    media_row = df_media_jugador[df_media_jugador['tipo_accion'] == accion]
+                    actual_row = df_partido_actual[df_partido_actual['tipo_accion'] == accion]
+                    
+                    if not media_row.empty and not actual_row.empty:
+                        media_efic = float(media_row['eficacia'].iloc[0])
+                        actual_efic = float(actual_row['eficacia'].iloc[0])
+                        diff = actual_efic - media_efic
+                        
+                        comparativas.append({
+                            'accion': nombre,
+                            'actual': actual_efic,
+                            'media': media_efic,
+                            'diff': diff
+                        })
+                
+                if comparativas:
+                    cols = st.columns(len(comparativas))
+                    for idx, comp in enumerate(comparativas):
+                        with cols[idx]:
+                            if comp['diff'] > 5:
+                                color = COLOR_VERDE
+                                icono = "⬆️"
+                            elif comp['diff'] < -5:
+                                color = COLOR_ROJO
+                                icono = "⬇️"
+                            else:
+                                color = COLOR_NARANJA
+                                icono = "➡️"
+                            
+                            st.markdown(f"""
+                            <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
+                                <strong>{comp['accion']}</strong><br>
+                                <span style="font-size: 1.5rem; color: {color};">{icono} {comp['diff']:+.1f}%</span><br>
+                                <small>Avui: {comp['actual']}% | Mitjana: {comp['media']}%</small>
+                            </div>
+                            """, unsafe_allow_html=True)
+        
+        # === MISSATGE MOTIVACIONAL ===
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Calcular valoración general del partido
+        valor = ficha['valor_total'] or 0
+        eficacia_ataque = ficha['ataque']['eficacia'] or 0
+        puntos = ficha['otras']['puntos_directos'] or 0
+        
+        if valor >= 10 and eficacia_ataque >= 50:
+            mensaje = "🌟 **PARTIT EXCEPCIONAL!** Has estat una estrella!"
+            color_msg = COLOR_VERDE
+        elif valor >= 5 or eficacia_ataque >= 45:
+            mensaje = "💪 **Gran partit!** Continues així!"
+            color_msg = COLOR_VERDE
+        elif valor >= 0 or eficacia_ataque >= 35:
+            mensaje = "👍 **Bon partit!** Segueix treballant!"
+            color_msg = COLOR_NARANJA
+        elif valor >= -5:
+            mensaje = "📈 **Pots donar més!** El proper serà millor!"
+            color_msg = COLOR_NARANJA
+        else:
+            mensaje = "💪 **Cap al davant!** Entrena dur i tornaràs més fort!"
+            color_msg = COLOR_ROJO
+        
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, {color_msg} 0%, {color_msg}99 100%); 
+                    padding: 1.5rem; border-radius: 10px; text-align: center; margin-top: 1rem;">
+            <h2 style="color: white; margin: 0;">{mensaje}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+
 
 def pagina_importar():
     """Página para importar partidos desde Excel"""
