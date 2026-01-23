@@ -3450,7 +3450,7 @@ def pagina_admin():
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors", "🏐 Partits"])
     
     # =================================
     # TAB 1: FASES
@@ -3865,6 +3865,156 @@ def pagina_admin():
                                 st.error(f"❌ Error: {str(e)}")
                         else:
                             st.warning("Has d'escriure 'ELIMINAR' per confirmar")
+
+    # =================================
+    # TAB 5: PARTIDOS
+    # =================================
+    with tab5:
+        st.subheader("🏐 Gestió de Partits")
+        
+        if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
+            st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
+        else:
+            # Mostrar partidos actuales
+            st.markdown(f"**Partits de {st.session_state.get('equipo_nombre', '')} - {st.session_state.get('temporada_nombre', '')}:**")
+            
+            partidos_actuales = cargar_partidos(
+                st.session_state.equipo_id,
+                st.session_state.temporada_id,
+                st.session_state.get('fase_id')
+            )
+            
+            if not partidos_actuales.empty:
+                # Mostrar tabla de partidos
+                df_display = partidos_actuales.copy()
+                df_display['tipus'] = df_display['local'].apply(lambda x: 'Local' if x else 'Visitant')
+                df_display = df_display[['id', 'rival', 'tipus', 'fecha', 'resultado', 'fase']]
+                df_display.columns = ['ID', 'Rival', 'Tipus', 'Data', 'Resultat', 'Fase']
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hi ha partits amb els filtres seleccionats")
+            
+            st.markdown("---")
+            
+            # Editar partido
+            st.markdown("**✏️ Editar partit:**")
+            
+            if not partidos_actuales.empty:
+                partido_editar = st.selectbox(
+                    "Selecciona partit a editar:",
+                    options=[None] + partidos_actuales['id'].tolist(),
+                    format_func=lambda x: "Selecciona..." if x is None 
+                        else f"vs {partidos_actuales[partidos_actuales['id'] == x]['rival'].iloc[0]} ({'L' if partidos_actuales[partidos_actuales['id'] == x]['local'].iloc[0] else 'V'})",
+                    key="partido_editar"
+                )
+                
+                if partido_editar:
+                    partido_info = partidos_actuales[partidos_actuales['id'] == partido_editar].iloc[0]
+                    
+                    # Cargar fases disponibles
+                    fases_disponibles = cargar_fases(st.session_state.temporada_id)
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edit_rival = st.text_input("Rival:", value=partido_info['rival'] or "", key="edit_partido_rival")
+                        edit_local = st.selectbox(
+                            "Tipus:",
+                            options=[True, False],
+                            index=0 if partido_info['local'] else 1,
+                            format_func=lambda x: "Local" if x else "Visitant",
+                            key="edit_partido_local"
+                        )
+                        
+                        # Selector de fase
+                        if not fases_disponibles.empty:
+                            fase_opciones = [None] + fases_disponibles['id'].tolist()
+                            fase_actual = None
+                            
+                            # Buscar fase actual del partido
+                            with get_engine().connect() as conn:
+                                fase_result = conn.execute(text(
+                                    "SELECT fase_id FROM partidos_new WHERE id = :pid"
+                                ), {"pid": partido_editar}).fetchone()
+                                if fase_result:
+                                    fase_actual = fase_result[0]
+                            
+                            edit_fase = st.selectbox(
+                                "Fase:",
+                                options=fase_opciones,
+                                index=fase_opciones.index(fase_actual) if fase_actual in fase_opciones else 0,
+                                format_func=lambda x: "Sense fase" if x is None 
+                                    else fases_disponibles[fases_disponibles['id'] == x]['nombre'].iloc[0],
+                                key="edit_partido_fase"
+                            )
+                        else:
+                            edit_fase = None
+                    
+                    with col2:
+                        # Manejar la fecha
+                        fecha_actual = partido_info['fecha']
+                        if fecha_actual:
+                            if isinstance(fecha_actual, str):
+                                from datetime import datetime
+                                fecha_actual = datetime.strptime(fecha_actual, '%Y-%m-%d').date()
+                        else:
+                            from datetime import date
+                            fecha_actual = date.today()
+                        
+                        edit_fecha = st.date_input("Data:", value=fecha_actual, key="edit_partido_fecha")
+                        edit_resultado = st.text_input("Resultat:", value=partido_info['resultado'] or "", placeholder="Ex: 3-1", key="edit_partido_resultado")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("💾 Guardar canvis", type="primary", key="btn_guardar_partido"):
+                            try:
+                                with get_engine().begin() as conn:
+                                    conn.execute(text("""
+                                        UPDATE partidos_new 
+                                        SET rival = :rival, local = :local, fecha = :fecha, 
+                                            resultado = :resultado, fase_id = :fase_id
+                                        WHERE id = :id
+                                    """), {
+                                        "rival": edit_rival,
+                                        "local": edit_local,
+                                        "fecha": edit_fecha,
+                                        "resultado": edit_resultado if edit_resultado else None,
+                                        "fase_id": edit_fase,
+                                        "id": partido_editar
+                                    })
+                                
+                                st.success("✅ Partit actualitzat!")
+                                st.cache_data.clear()
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
+                    
+                    with col2:
+                        if st.button("🗑️ Eliminar partit", type="secondary", key="btn_eliminar_partido_inline"):
+                            st.session_state.confirmar_eliminar_partido = partido_editar
+                    
+                    # Confirmación de eliminación
+                    if st.session_state.get('confirmar_eliminar_partido') == partido_editar:
+                        st.error("⚠️ ATENCIÓ: Això eliminarà el partit i totes les seves accions!")
+                        confirmacio_partido = st.text_input("Escriu 'ELIMINAR' per confirmar:", key="confirm_eliminar_partido")
+                        
+                        if st.button("🗑️ Confirmar eliminació", type="secondary", key="btn_confirmar_eliminar_partido"):
+                            if confirmacio_partido == "ELIMINAR":
+                                try:
+                                    with get_engine().begin() as conn:
+                                        conn.execute(text("DELETE FROM acciones_new WHERE partido_id = :pid"), {"pid": partido_editar})
+                                        conn.execute(text("DELETE FROM partidos_new WHERE id = :pid"), {"pid": partido_editar})
+                                    
+                                    st.success("✅ Partit eliminat!")
+                                    st.session_state.confirmar_eliminar_partido = None
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Error: {str(e)}")
+                            else:
+                                st.warning("Has d'escriure 'ELIMINAR' per confirmar")
 
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
