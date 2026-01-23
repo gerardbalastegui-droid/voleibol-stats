@@ -2221,10 +2221,10 @@ def pagina_jugador():
             st.info("No hi ha dades d'atac per rotació per aquest jugador")
 
 def pagina_comparativa():
-    """Página de comparación de partidos"""
+    """Página de comparación de partidos y jugadores"""
     st.markdown("""
     <div class="main-header">
-        <h1>📈 Comparativa de Partits</h1>
+        <h1>📈 Comparativa</h1>
     </div>
     """, unsafe_allow_html=True)
     
@@ -2233,184 +2233,450 @@ def pagina_comparativa():
         st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
         return
     
-    partidos = cargar_partidos(
-        st.session_state.equipo_id,
-        st.session_state.temporada_id,
-        st.session_state.get('fase_id')
-    )
+    tab1, tab2 = st.tabs(["⚔️ Comparar Partits", "👥 Comparar Jugadors"])
     
-    if len(partidos) < 2:
-        st.info("Es necessiten almenys 2 partits per fer una comparativa")
-        return
-    
-    partidos['display'] = partidos.apply(
-        lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
-    )
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        partido1_options = [None] + partidos['id'].tolist()
-        partido1 = st.selectbox(
-            "Partit 1:",
-            options=partido1_options,
-            format_func=lambda x: "Selecciona Partit 1..." if x is None
-                else partidos[partidos['id'] == x]['display'].iloc[0],
-            key='partido1'
-        )
-    
-    with col2:
-        partido2_options = [None] + partidos['id'].tolist()
-        partido2 = st.selectbox(
-            "Partit 2:",
-            options=partido2_options,
-            format_func=lambda x: "Selecciona Partit 2..." if x is None
-                else partidos[partidos['id'] == x]['display'].iloc[0],
-            key='partido2'
-        )
-    
-    if partido1 and partido2 and partido1 != partido2:
-        info1 = partidos[partidos['id'] == partido1].iloc[0]
-        info2 = partidos[partidos['id'] == partido2].iloc[0]
-        
-        # Crear nombres con L/V
-        rival1_display = f"{info1['rival']} ({'L' if info1['local'] else 'V'})"
-        rival2_display = f"{info2['rival']} ({'L' if info2['local'] else 'V'})"
-        
-        st.markdown("---")
-        
-        # Cargar datos
-        df1 = obtener_resumen_acciones(partido1)
-        df2 = obtener_resumen_acciones(partido2)
-        
-        # Comparar eficacias
-        st.subheader("⚔️ Comparativa d'Eficàcia")
-        
-        acciones = ['atacar', 'recepción', 'saque', 'bloqueo', 'defensa']
-        nombres = ['Atac', 'Recepció', 'Saque', 'Bloqueig', 'Defensa']
-        
-        fig = go.Figure()
-        
-        eficacias1 = []
-        eficacias2 = []
-        
-        for accion in acciones:
-            e1 = df1[df1['tipo_accion'] == accion]['eficacia']
-            e2 = df2[df2['tipo_accion'] == accion]['eficacia']
-            eficacias1.append(float(e1.iloc[0]) if not e1.empty else 0)
-            eficacias2.append(float(e2.iloc[0]) if not e2.empty else 0)
-        
-        fig.add_trace(go.Bar(
-            name=f"vs {rival1_display}",
-            x=nombres,
-            y=eficacias1,
-            marker_color=COLOR_ROJO,
-            text=[f'{e}%' for e in eficacias1],
-            textposition='outside'
-        ))
-        
-        fig.add_trace(go.Bar(
-            name=f"vs {rival2_display}",
-            x=nombres,
-            y=eficacias2,
-            marker_color=COLOR_NEGRO,
-            text=[f'{e}%' for e in eficacias2],
-            textposition='outside'
-        ))
-        
-        fig.update_layout(
-            barmode='group',
-            yaxis=dict(range=[0, 100]),
-            height=400
+    # =================================
+    # TAB 1: COMPARAR PARTIDOS
+    # =================================
+    with tab1:
+        partidos = cargar_partidos(
+            st.session_state.equipo_id,
+            st.session_state.temporada_id,
+            st.session_state.get('fase_id')
         )
         
-        st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+        if len(partidos) < 2:
+            st.info("Es necessiten almenys 2 partits per fer una comparativa")
+            return
         
-        # Tabla comparativa con tendencias
-        st.subheader("📋 Taula Comparativa amb Tendències")
-        
-        comparativa = []
-        for accion, nombre in zip(acciones, nombres):
-            fila1 = df1[df1['tipo_accion'] == accion]
-            fila2 = df2[df2['tipo_accion'] == accion]
-            
-            e1 = float(fila1['eficacia'].iloc[0]) if not fila1.empty else 0
-            e2 = float(fila2['eficacia'].iloc[0]) if not fila2.empty else 0
-            diff = e2 - e1
-            
-            # Determinar tendencia
-            if diff > 5:
-                tendencia = "✅ Millora"
-            elif diff < -5:
-                tendencia = "❌ Empitjora"
-            else:
-                tendencia = "➡️ Similar"
-            
-            comparativa.append({
-                'Acció': nombre,
-                f'vs {rival1_display}': f'{e1}%',
-                f'vs {rival2_display}': f'{e2}%',
-                'Diferència': f'{diff:+.1f}%',
-                'Tendència': tendencia
-            })
-        
-        st.dataframe(pd.DataFrame(comparativa), use_container_width=True, hide_index=True)
-        
-        # Leyenda
-        st.caption("✅ Millora (+5%) | ➡️ Similar (±5%) | ❌ Empitjora (-5%)")
-        
-        # === DISTRIBUCIÓN DEL COLOCADOR COMPARATIVA ===
-        st.markdown("---")
-        st.subheader("🎯 Comparativa Distribució del Col·locador")
-        
-        df_dist1 = obtener_distribucion_colocador(partido1)
-        df_dist2 = obtener_distribucion_colocador(partido2)
+        partidos['display'] = partidos.apply(
+            lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
+        )
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown(f"**vs {rival1_display}**")
-            if not df_dist1.empty:
-                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True, config={'staticPlot': True})
-            else:
-                st.info("No hi ha dades de distribució")
+            partido1_options = [None] + partidos['id'].tolist()
+            partido1 = st.selectbox(
+                "Partit 1:",
+                options=partido1_options,
+                format_func=lambda x: "Selecciona Partit 1..." if x is None
+                    else partidos[partidos['id'] == x]['display'].iloc[0],
+                key='partido1'
+            )
         
         with col2:
-            st.markdown(f"**vs {rival2_display}**")
-            if not df_dist2.empty:
-                st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True, config={'staticPlot': True})
-            else:
-                st.info("No hi ha dades de distribució")
+            partido2_options = [None] + partidos['id'].tolist()
+            partido2 = st.selectbox(
+                "Partit 2:",
+                options=partido2_options,
+                format_func=lambda x: "Selecciona Partit 2..." if x is None
+                    else partidos[partidos['id'] == x]['display'].iloc[0],
+                key='partido2'
+            )
         
-        # === JUGADORES DE CADA PARTIDO ===
-        st.markdown("---")
-        st.subheader("👥 Jugadors Participants")
+        if partido1 and partido2 and partido1 != partido2:
+            info1 = partidos[partidos['id'] == partido1].iloc[0]
+            info2 = partidos[partidos['id'] == partido2].iloc[0]
+            
+            rival1_display = f"{info1['rival']} ({'L' if info1['local'] else 'V'})"
+            rival2_display = f"{info2['rival']} ({'L' if info2['local'] else 'V'})"
+            
+            st.markdown("---")
+            
+            df1 = obtener_resumen_acciones(partido1)
+            df2 = obtener_resumen_acciones(partido2)
+            
+            st.subheader("⚔️ Comparativa d'Eficàcia")
+            
+            acciones = ['atacar', 'recepción', 'saque', 'bloqueo', 'defensa']
+            nombres = ['Atac', 'Recepció', 'Saque', 'Bloqueig', 'Defensa']
+            
+            fig = go.Figure()
+            
+            eficacias1 = []
+            eficacias2 = []
+            
+            for accion in acciones:
+                e1 = df1[df1['tipo_accion'] == accion]['eficacia']
+                e2 = df2[df2['tipo_accion'] == accion]['eficacia']
+                eficacias1.append(float(e1.iloc[0]) if not e1.empty else 0)
+                eficacias2.append(float(e2.iloc[0]) if not e2.empty else 0)
+            
+            fig.add_trace(go.Bar(
+                name=f"vs {rival1_display}",
+                x=nombres,
+                y=eficacias1,
+                marker_color=COLOR_ROJO,
+                text=[f'{e}%' for e in eficacias1],
+                textposition='outside'
+            ))
+            
+            fig.add_trace(go.Bar(
+                name=f"vs {rival2_display}",
+                x=nombres,
+                y=eficacias2,
+                marker_color=COLOR_NEGRO,
+                text=[f'{e}%' for e in eficacias2],
+                textposition='outside'
+            ))
+            
+            fig.update_layout(
+                barmode='group',
+                yaxis=dict(range=[0, 100]),
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+            
+            # Tabla comparativa con tendencias
+            st.subheader("📋 Taula Comparativa amb Tendències")
+            
+            comparativa = []
+            for accion, nombre in zip(acciones, nombres):
+                fila1 = df1[df1['tipo_accion'] == accion]
+                fila2 = df2[df2['tipo_accion'] == accion]
+                
+                e1 = float(fila1['eficacia'].iloc[0]) if not fila1.empty else 0
+                e2 = float(fila2['eficacia'].iloc[0]) if not fila2.empty else 0
+                diff = e2 - e1
+                
+                if diff > 5:
+                    tendencia = "✅ Millora"
+                elif diff < -5:
+                    tendencia = "❌ Empitjora"
+                else:
+                    tendencia = "➡️ Similar"
+                
+                comparativa.append({
+                    'Acció': nombre,
+                    f'vs {rival1_display}': f'{e1}%',
+                    f'vs {rival2_display}': f'{e2}%',
+                    'Diferència': f'{diff:+.1f}%',
+                    'Tendència': tendencia
+                })
+            
+            st.dataframe(pd.DataFrame(comparativa), use_container_width=True, hide_index=True)
+            
+            st.caption("✅ Millora (+5%) | ➡️ Similar (±5%) | ❌ Empitjora (-5%)")
+            
+            # Distribución del colocador comparativa
+            st.markdown("---")
+            st.subheader("🎯 Comparativa Distribució del Col·locador")
+            
+            df_dist1 = obtener_distribucion_colocador(partido1)
+            df_dist2 = obtener_distribucion_colocador(partido2)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"**vs {rival1_display}**")
+                if not df_dist1.empty:
+                    st.plotly_chart(crear_grafico_distribucion_colocador(df_dist1), use_container_width=True, config={'staticPlot': True})
+                else:
+                    st.info("No hi ha dades de distribució")
+            
+            with col2:
+                st.markdown(f"**vs {rival2_display}**")
+                if not df_dist2.empty:
+                    st.plotly_chart(crear_grafico_distribucion_colocador(df_dist2), use_container_width=True, config={'staticPlot': True})
+                else:
+                    st.info("No hi ha dades de distribució")
+            
+            # Jugadores de cada partido
+            st.markdown("---")
+            st.subheader("👥 Jugadors Participants")
+            
+            df_jug1 = obtener_jugadores_partido(partido1)
+            df_jug2 = obtener_jugadores_partido(partido2)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"**vs {rival1_display}** ({len(df_jug1)} jugadors)")
+                if not df_jug1.empty:
+                    for _, row in df_jug1.iterrows():
+                        dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                        st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
+                else:
+                    st.info("No hi ha dades")
+            
+            with col2:
+                st.markdown(f"**vs {rival2_display}** ({len(df_jug2)} jugadors)")
+                if not df_jug2.empty:
+                    for _, row in df_jug2.iterrows():
+                        dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                        st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
+                else:
+                    st.info("No hi ha dades")
         
-        df_jug1 = obtener_jugadores_partido(partido1)
-        df_jug2 = obtener_jugadores_partido(partido2)
+        elif partido1 and partido2 and partido1 == partido2:
+            st.warning("Selecciona dos partits diferents per comparar")
+    
+    # =================================
+    # TAB 2: COMPARAR JUGADORES
+    # =================================
+    with tab2:
+        st.subheader("👥 Comparativa entre Jugadors")
+        
+        # Cargar partidos para el contexto
+        partidos = cargar_partidos(
+            st.session_state.equipo_id,
+            st.session_state.temporada_id,
+            st.session_state.get('fase_id')
+        )
+        
+        if partidos.empty:
+            st.info("No hi ha partits disponibles")
+            return
+        
+        partido_ids = partidos['id'].tolist()
+        
+        # Cargar jugadores que han participado
+        jugadores_participantes = obtener_jugadores_partido(partido_ids)
+        
+        if len(jugadores_participantes) < 2:
+            st.info("Es necessiten almenys 2 jugadors per fer una comparativa")
+            return
+        
+        st.info(f"📊 Comparant estadístiques de {len(partidos)} partits")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown(f"**vs {rival1_display}** ({len(df_jug1)} jugadors)")
-            if not df_jug1.empty:
-                for _, row in df_jug1.iterrows():
-                    dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
-                    st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
-            else:
-                st.info("No hi ha dades")
+            jugador1_options = [None] + jugadores_participantes['id'].tolist()
+            jugador1_id = st.selectbox(
+                "Jugador 1:",
+                options=jugador1_options,
+                format_func=lambda x: "Selecciona Jugador 1..." if x is None
+                    else jugadores_participantes[jugadores_participantes['id'] == x]['jugador'].iloc[0],
+                key='comp_jugador1'
+            )
         
         with col2:
-            st.markdown(f"**vs {rival2_display}** ({len(df_jug2)} jugadors)")
-            if not df_jug2.empty:
-                for _, row in df_jug2.iterrows():
-                    dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
-                    st.markdown(f"• **{row['jugador']}** {dorsal_str} - {row['acciones']} accions")
+            jugador2_options = [None] + jugadores_participantes['id'].tolist()
+            jugador2_id = st.selectbox(
+                "Jugador 2:",
+                options=jugador2_options,
+                format_func=lambda x: "Selecciona Jugador 2..." if x is None
+                    else jugadores_participantes[jugadores_participantes['id'] == x]['jugador'].iloc[0],
+                key='comp_jugador2'
+            )
+        
+        if jugador1_id and jugador2_id and jugador1_id != jugador2_id:
+            jugador1_nombre = jugadores_participantes[jugadores_participantes['id'] == jugador1_id]['jugador'].iloc[0]
+            jugador2_nombre = jugadores_participantes[jugadores_participantes['id'] == jugador2_id]['jugador'].iloc[0]
+            
+            st.markdown("---")
+            
+            # Obtener estadísticas de ambos jugadores
+            df_jug1 = obtener_estadisticas_jugador(partido_ids, jugador1_id)
+            df_jug2 = obtener_estadisticas_jugador(partido_ids, jugador2_id)
+            
+            # === MÉTRICAS PRINCIPALES ===
+            st.subheader("📊 Comparativa General")
+            
+            acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
+            nombres = ['Atac', 'Recepció', 'Saque', 'Bloqueig']
+            iconos = ['🔥', '🎯', '🚀', '🧱']
+            
+            # Gráfico de barras comparativo
+            fig = go.Figure()
+            
+            eficacias1 = []
+            eficacias2 = []
+            
+            for accion in acciones:
+                e1 = df_jug1[df_jug1['tipo_accion'] == accion]['eficacia']
+                e2 = df_jug2[df_jug2['tipo_accion'] == accion]['eficacia']
+                eficacias1.append(float(e1.iloc[0]) if not e1.empty else 0)
+                eficacias2.append(float(e2.iloc[0]) if not e2.empty else 0)
+            
+            fig.add_trace(go.Bar(
+                name=jugador1_nombre,
+                x=nombres,
+                y=eficacias1,
+                marker_color=COLOR_ROJO,
+                text=[f'{e}%' for e in eficacias1],
+                textposition='outside'
+            ))
+            
+            fig.add_trace(go.Bar(
+                name=jugador2_nombre,
+                x=nombres,
+                y=eficacias2,
+                marker_color=COLOR_NEGRO,
+                text=[f'{e}%' for e in eficacias2],
+                textposition='outside'
+            ))
+            
+            fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
+                          annotation_text="Bo (60%)")
+            fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
+                          annotation_text="Regular (40%)")
+            
+            fig.update_layout(
+                title="Eficàcia per Acció",
+                barmode='group',
+                yaxis=dict(range=[0, 100]),
+                height=400,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+            
+            # === TABLA DETALLADA ===
+            st.markdown("---")
+            st.subheader("📋 Detall per Acció")
+            
+            comparativa_data = []
+            
+            for accion, nombre, icono in zip(acciones, nombres, iconos):
+                fila1 = df_jug1[df_jug1['tipo_accion'] == accion]
+                fila2 = df_jug2[df_jug2['tipo_accion'] == accion]
+                
+                total1 = int(fila1['total'].iloc[0]) if not fila1.empty else 0
+                total2 = int(fila2['total'].iloc[0]) if not fila2.empty else 0
+                puntos1 = int(fila1['puntos'].iloc[0]) if not fila1.empty else 0
+                puntos2 = int(fila2['puntos'].iloc[0]) if not fila2.empty else 0
+                efic1 = float(fila1['eficacia'].iloc[0]) if not fila1.empty else 0
+                efic2 = float(fila2['eficacia'].iloc[0]) if not fila2.empty else 0
+                
+                diff = efic1 - efic2
+                if diff > 5:
+                    guanyador = f"🏆 {jugador1_nombre}"
+                elif diff < -5:
+                    guanyador = f"🏆 {jugador2_nombre}"
+                else:
+                    guanyador = "🤝 Empat"
+                
+                comparativa_data.append({
+                    'Acció': f"{icono} {nombre}",
+                    f'{jugador1_nombre} Total': total1,
+                    f'{jugador1_nombre} #': puntos1,
+                    f'{jugador1_nombre} Efic.': f"{efic1}%",
+                    f'{jugador2_nombre} Total': total2,
+                    f'{jugador2_nombre} #': puntos2,
+                    f'{jugador2_nombre} Efic.': f"{efic2}%",
+                    'Millor': guanyador
+                })
+            
+            st.dataframe(pd.DataFrame(comparativa_data), use_container_width=True, hide_index=True)
+            
+            # === RADAR COMPARATIVO ===
+            st.markdown("---")
+            st.subheader("🎯 Perfil Comparatiu")
+            
+            # Crear radar con ambos jugadores
+            categorias = []
+            valores1 = []
+            valores2 = []
+            
+            for accion, nombre in zip(acciones, nombres):
+                fila1 = df_jug1[df_jug1['tipo_accion'] == accion]
+                fila2 = df_jug2[df_jug2['tipo_accion'] == accion]
+                
+                if not fila1.empty or not fila2.empty:
+                    categorias.append(nombre)
+                    valores1.append(float(fila1['eficacia'].iloc[0]) if not fila1.empty else 0)
+                    valores2.append(float(fila2['eficacia'].iloc[0]) if not fila2.empty else 0)
+            
+            if categorias:
+                # Cerrar el radar
+                categorias_radar = categorias + [categorias[0]]
+                valores1_radar = valores1 + [valores1[0]]
+                valores2_radar = valores2 + [valores2[0]]
+                
+                fig_radar = go.Figure()
+                
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=valores1_radar,
+                    theta=categorias_radar,
+                    fill='toself',
+                    fillcolor=f'rgba(200, 16, 46, 0.3)',
+                    line_color=COLOR_ROJO,
+                    name=jugador1_nombre
+                ))
+                
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=valores2_radar,
+                    theta=categorias_radar,
+                    fill='toself',
+                    fillcolor=f'rgba(0, 0, 0, 0.2)',
+                    line_color=COLOR_NEGRO,
+                    name=jugador2_nombre
+                ))
+                
+                fig_radar.update_layout(
+                    polar=dict(
+                        radialaxis=dict(
+                            visible=True,
+                            range=[0, 100]
+                        )
+                    ),
+                    title="Comparativa de Perfils (Eficàcia %)",
+                    height=450,
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+                )
+                
+                st.plotly_chart(fig_radar, use_container_width=True, config={'staticPlot': True})
+            
+            # === PUNTOS DIRECTOS ===
+            st.markdown("---")
+            st.subheader("⚡ Punts Directes")
+            
+            col1, col2 = st.columns(2)
+            
+            # Calcular puntos directos de cada jugador
+            puntos1_ataque = int(df_jug1[df_jug1['tipo_accion'] == 'atacar']['puntos'].iloc[0]) if not df_jug1[df_jug1['tipo_accion'] == 'atacar'].empty else 0
+            puntos1_saque = int(df_jug1[df_jug1['tipo_accion'] == 'saque']['puntos'].iloc[0]) if not df_jug1[df_jug1['tipo_accion'] == 'saque'].empty else 0
+            puntos1_bloqueo = int(df_jug1[df_jug1['tipo_accion'] == 'bloqueo']['puntos'].iloc[0]) if not df_jug1[df_jug1['tipo_accion'] == 'bloqueo'].empty else 0
+            puntos1_total = puntos1_ataque + puntos1_saque + puntos1_bloqueo
+            
+            puntos2_ataque = int(df_jug2[df_jug2['tipo_accion'] == 'atacar']['puntos'].iloc[0]) if not df_jug2[df_jug2['tipo_accion'] == 'atacar'].empty else 0
+            puntos2_saque = int(df_jug2[df_jug2['tipo_accion'] == 'saque']['puntos'].iloc[0]) if not df_jug2[df_jug2['tipo_accion'] == 'saque'].empty else 0
+            puntos2_bloqueo = int(df_jug2[df_jug2['tipo_accion'] == 'bloqueo']['puntos'].iloc[0]) if not df_jug2[df_jug2['tipo_accion'] == 'bloqueo'].empty else 0
+            puntos2_total = puntos2_ataque + puntos2_saque + puntos2_bloqueo
+            
+            with col1:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, {COLOR_ROJO} 0%, #8B0000 100%); 
+                            padding: 1.5rem; border-radius: 10px; text-align: center; color: white;">
+                    <h3 style="margin: 0; color: white;">{jugador1_nombre}</h3>
+                    <p style="font-size: 3rem; font-weight: bold; margin: 0.5rem 0;">{puntos1_total}</p>
+                    <p style="margin: 0;">🔥 {puntos1_ataque} | 🎯 {puntos1_saque} | 🧱 {puntos1_bloqueo}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, {COLOR_NEGRO} 0%, #333 100%); 
+                            padding: 1.5rem; border-radius: 10px; text-align: center; color: white;">
+                    <h3 style="margin: 0; color: white;">{jugador2_nombre}</h3>
+                    <p style="font-size: 3rem; font-weight: bold; margin: 0.5rem 0;">{puntos2_total}</p>
+                    <p style="margin: 0;">🔥 {puntos2_ataque} | 🎯 {puntos2_saque} | 🧱 {puntos2_bloqueo}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Veredicto final
+            st.markdown("---")
+            if puntos1_total > puntos2_total:
+                ganador = jugador1_nombre
+                diff_puntos = puntos1_total - puntos2_total
+            elif puntos2_total > puntos1_total:
+                ganador = jugador2_nombre
+                diff_puntos = puntos2_total - puntos1_total
             else:
-                st.info("No hi ha dades")
-    
-    elif partido1 and partido2 and partido1 == partido2:
-        st.warning("Selecciona dos partits diferents per comparar")
+                ganador = None
+                diff_puntos = 0
+            
+            if ganador:
+                st.success(f"🏆 **{ganador}** lidera amb **{diff_puntos} punts** més!")
+            else:
+                st.info("🤝 **Empat** en punts directes!")
+        
+        elif jugador1_id and jugador2_id and jugador1_id == jugador2_id:
+            st.warning("Selecciona dos jugadors diferents per comparar")
 
 def pagina_fichas():
     """Página de fichas individuales de jugadores"""
