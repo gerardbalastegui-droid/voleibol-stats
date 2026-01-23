@@ -2609,6 +2609,72 @@ def pagina_importar():
     from importar_partido_streamlit import pagina_importar_partido
     pagina_importar_partido(get_engine)
 
+def pagina_admin():
+    """Página de administración"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>⚙️ Administració</h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["🏆 Fases", "📋 Altres"])
+    
+    with tab1:
+        st.subheader("🏆 Gestió de Fases")
+        
+        # Verificar que hay temporada seleccionada
+        if not st.session_state.get('temporada_id'):
+            st.warning("⚠️ Selecciona primer una temporada al menú lateral")
+            return
+        
+        # Mostrar fases actuales
+        st.markdown("**Fases actuals:**")
+        fases_actuales = cargar_fases(st.session_state.temporada_id)
+        
+        if not fases_actuales.empty:
+            st.dataframe(fases_actuales, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha fases creades per aquesta temporada")
+        
+        st.markdown("---")
+        
+        # Formulario para añadir nueva fase
+        st.markdown("**➕ Afegir nova fase:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nuevo_nombre = st.text_input("Nom de la fase:", placeholder="Ex: Segona Fase")
+        
+        with col2:
+            nuevo_orden = st.number_input("Ordre:", min_value=1, value=len(fases_actuales) + 1)
+        
+        if st.button("✅ Crear fase", type="primary"):
+            if not nuevo_nombre:
+                st.error("❌ Has d'escriure un nom per la fase")
+            else:
+                try:
+                    with get_engine().begin() as conn:
+                        conn.execute(text("""
+                            INSERT INTO fases (nombre, temporada_id, orden)
+                            VALUES (:nombre, :temporada_id, :orden)
+                        """), {
+                            "nombre": nuevo_nombre,
+                            "temporada_id": st.session_state.temporada_id,
+                            "orden": nuevo_orden
+                        })
+                    
+                    st.success(f"✅ Fase '{nuevo_nombre}' creada correctament!")
+                    st.cache_data.clear()
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error creant la fase: {str(e)}")
+    
+    with tab2:
+        st.subheader("📋 Altres opcions")
+        st.info("Pròximament: gestió d'equips, temporades, jugadors...")
+
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
 # =============================================================================
@@ -2700,7 +2766,7 @@ def sidebar_contexto():
     st.sidebar.subheader("📍 Navegació")
     
     if es_admin:
-        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar"]
+        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar", "⚙️ Admin"]
     else:
         opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
 
@@ -2736,6 +2802,8 @@ def main():
         pagina_comparativa()
     elif pagina == "📤 Importar":
         pagina_importar()
+    elif pagina == "⚙️ Admin":
+        pagina_admin()
 
 if __name__ == "__main__":
     main()
