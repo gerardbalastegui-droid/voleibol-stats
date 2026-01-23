@@ -2689,9 +2689,7 @@ def pagina_admin():
                     if st.button("🗑️ Eliminar fase", type="secondary", key="btn_eliminar_fase"):
                         try:
                             with get_engine().begin() as conn:
-                                # Quitar fase de los partidos
                                 conn.execute(text("UPDATE partidos_new SET fase_id = NULL WHERE fase_id = :fid"), {"fid": fase_eliminar})
-                                # Eliminar fase
                                 conn.execute(text("DELETE FROM fases WHERE id = :fid"), {"fid": fase_eliminar})
                             
                             st.success("✅ Fase eliminada!")
@@ -2748,6 +2746,42 @@ def pagina_admin():
                     
                 except Exception as e:
                     st.error(f"❌ Error creant l'equip: {str(e)}")
+        
+        # Eliminar equipo
+        st.markdown("---")
+        st.markdown("**🗑️ Eliminar equip:**")
+        
+        if not equipos_actuales.empty:
+            equipo_eliminar = st.selectbox(
+                "Selecciona equip a eliminar:",
+                options=[None] + equipos_actuales['id'].tolist(),
+                format_func=lambda x: "Selecciona..." if x is None else equipos_actuales[equipos_actuales['id'] == x]['nombre_completo'].iloc[0],
+                key="equipo_eliminar"
+            )
+            
+            if equipo_eliminar:
+                st.error("⚠️ ATENCIÓ: Això eliminarà l'equip, els seus jugadors i tots els partits associats!")
+                confirmacio = st.text_input("Escriu 'ELIMINAR' per confirmar:", key="confirm_eliminar_equipo")
+                
+                if st.button("🗑️ Eliminar equip", type="secondary", key="btn_eliminar_equipo"):
+                    if confirmacio == "ELIMINAR":
+                        try:
+                            with get_engine().begin() as conn:
+                                conn.execute(text("""
+                                    DELETE FROM acciones_new WHERE partido_id IN 
+                                    (SELECT id FROM partidos_new WHERE equipo_id = :eid)
+                                """), {"eid": equipo_eliminar})
+                                conn.execute(text("DELETE FROM partidos_new WHERE equipo_id = :eid"), {"eid": equipo_eliminar})
+                                conn.execute(text("DELETE FROM jugadores WHERE equipo_id = :eid"), {"eid": equipo_eliminar})
+                                conn.execute(text("DELETE FROM equipos WHERE id = :eid"), {"eid": equipo_eliminar})
+                            
+                            st.success("✅ Equip eliminat!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+                    else:
+                        st.warning("Has d'escriure 'ELIMINAR' per confirmar")
     
     # =================================
     # TAB 3: TEMPORADAS
@@ -2783,7 +2817,6 @@ def pagina_admin():
             else:
                 try:
                     with get_engine().begin() as conn:
-                        # Si es activa, desactivar las demás
                         if nueva_temp_activa:
                             conn.execute(text("UPDATE temporadas SET activa = false"))
                         
@@ -2801,6 +2834,42 @@ def pagina_admin():
                     
                 except Exception as e:
                     st.error(f"❌ Error creant la temporada: {str(e)}")
+        
+        # Eliminar temporada
+        st.markdown("---")
+        st.markdown("**🗑️ Eliminar temporada:**")
+        
+        if not temporadas_actuales.empty:
+            temp_eliminar = st.selectbox(
+                "Selecciona temporada a eliminar:",
+                options=[None] + temporadas_actuales['id'].tolist(),
+                format_func=lambda x: "Selecciona..." if x is None else temporadas_actuales[temporadas_actuales['id'] == x]['nombre'].iloc[0],
+                key="temp_eliminar"
+            )
+            
+            if temp_eliminar:
+                st.error("⚠️ ATENCIÓ: Això eliminarà la temporada, les seves fases i tots els partits associats!")
+                confirmacio_temp = st.text_input("Escriu 'ELIMINAR' per confirmar:", key="confirm_eliminar_temp")
+                
+                if st.button("🗑️ Eliminar temporada", type="secondary", key="btn_eliminar_temp"):
+                    if confirmacio_temp == "ELIMINAR":
+                        try:
+                            with get_engine().begin() as conn:
+                                conn.execute(text("""
+                                    DELETE FROM acciones_new WHERE partido_id IN 
+                                    (SELECT id FROM partidos_new WHERE temporada_id = :tid)
+                                """), {"tid": temp_eliminar})
+                                conn.execute(text("DELETE FROM partidos_new WHERE temporada_id = :tid"), {"tid": temp_eliminar})
+                                conn.execute(text("DELETE FROM fases WHERE temporada_id = :tid"), {"tid": temp_eliminar})
+                                conn.execute(text("DELETE FROM temporadas WHERE id = :tid"), {"tid": temp_eliminar})
+                            
+                            st.success("✅ Temporada eliminada!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+                    else:
+                        st.warning("Has d'escriure 'ELIMINAR' per confirmar")
     
     # =================================
     # TAB 4: JUGADORES
@@ -2863,7 +2932,7 @@ def pagina_admin():
                     except Exception as e:
                         st.error(f"❌ Error creant el jugador: {str(e)}")
             
-            # Editar/Desactivar jugador
+            # Editar jugador
             st.markdown("---")
             st.markdown("**✏️ Editar jugador:**")
             
@@ -2932,6 +3001,37 @@ def pagina_admin():
                                 
                             except Exception as e:
                                 st.error(f"❌ Error: {str(e)}")
+            
+            # Eliminar jugador permanentemente
+            st.markdown("---")
+            st.markdown("**🗑️ Eliminar jugador permanentment:**")
+            
+            if not jugadores_actuales.empty:
+                jug_eliminar = st.selectbox(
+                    "Selecciona jugador a eliminar:",
+                    options=[None] + jugadores_actuales['id'].tolist(),
+                    format_func=lambda x: "Selecciona..." if x is None else jugadores_actuales[jugadores_actuales['id'] == x]['nombre_completo'].iloc[0],
+                    key="jug_eliminar"
+                )
+                
+                if jug_eliminar:
+                    st.error("⚠️ ATENCIÓ: Això eliminarà el jugador i totes les seves estadístiques!")
+                    confirmacio_jug = st.text_input("Escriu 'ELIMINAR' per confirmar:", key="confirm_eliminar_jug")
+                    
+                    if st.button("🗑️ Eliminar jugador", type="secondary", key="btn_eliminar_jug"):
+                        if confirmacio_jug == "ELIMINAR":
+                            try:
+                                with get_engine().begin() as conn:
+                                    conn.execute(text("DELETE FROM acciones_new WHERE jugador_id = :jid"), {"jid": jug_eliminar})
+                                    conn.execute(text("DELETE FROM jugadores WHERE id = :jid"), {"jid": jug_eliminar})
+                                
+                                st.success("✅ Jugador eliminat!")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
+                        else:
+                            st.warning("Has d'escriure 'ELIMINAR' per confirmar")
 
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
