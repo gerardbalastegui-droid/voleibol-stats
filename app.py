@@ -3914,30 +3914,40 @@ def pagina_admin():
                     # Cargar fases disponibles
                     fases_disponibles = cargar_fases(st.session_state.temporada_id)
                     
+                    # Obtener fase actual del partido
+                    fase_actual = None
+                    with get_engine().connect() as conn:
+                        fase_result = conn.execute(text(
+                            "SELECT fase_id FROM partidos_new WHERE id = :pid"
+                        ), {"pid": partido_editar}).fetchone()
+                        if fase_result:
+                            fase_actual = fase_result[0]
+                    
+                    # Manejar la fecha
+                    fecha_actual = partido_info['fecha']
+                    if fecha_actual:
+                        if isinstance(fecha_actual, str):
+                            from datetime import datetime
+                            fecha_actual = datetime.strptime(fecha_actual, '%Y-%m-%d').date()
+                    else:
+                        from datetime import date
+                        fecha_actual = date.today()
+                    
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        edit_rival = st.text_input("Rival:", value=partido_info['rival'] or "", key="edit_partido_rival")
+                        edit_rival = st.text_input("Rival:", value=partido_info['rival'] or "", key=f"edit_rival_{partido_editar}")
                         edit_local = st.selectbox(
                             "Tipus:",
                             options=[True, False],
                             index=0 if partido_info['local'] else 1,
                             format_func=lambda x: "Local" if x else "Visitant",
-                            key="edit_partido_local"
+                            key=f"edit_local_{partido_editar}"
                         )
                         
                         # Selector de fase
                         if not fases_disponibles.empty:
                             fase_opciones = [None] + fases_disponibles['id'].tolist()
-                            fase_actual = None
-                            
-                            # Buscar fase actual del partido
-                            with get_engine().connect() as conn:
-                                fase_result = conn.execute(text(
-                                    "SELECT fase_id FROM partidos_new WHERE id = :pid"
-                                ), {"pid": partido_editar}).fetchone()
-                                if fase_result:
-                                    fase_actual = fase_result[0]
                             
                             edit_fase = st.selectbox(
                                 "Fase:",
@@ -3945,29 +3955,19 @@ def pagina_admin():
                                 index=fase_opciones.index(fase_actual) if fase_actual in fase_opciones else 0,
                                 format_func=lambda x: "Sense fase" if x is None 
                                     else fases_disponibles[fases_disponibles['id'] == x]['nombre'].iloc[0],
-                                key="edit_partido_fase"
+                                key=f"edit_fase_{partido_editar}"
                             )
                         else:
                             edit_fase = None
                     
                     with col2:
-                        # Manejar la fecha
-                        fecha_actual = partido_info['fecha']
-                        if fecha_actual:
-                            if isinstance(fecha_actual, str):
-                                from datetime import datetime
-                                fecha_actual = datetime.strptime(fecha_actual, '%Y-%m-%d').date()
-                        else:
-                            from datetime import date
-                            fecha_actual = date.today()
-                        
-                        edit_fecha = st.date_input("Data:", value=fecha_actual, key="edit_partido_fecha")
-                        edit_resultado = st.text_input("Resultat:", value=partido_info['resultado'] or "", placeholder="Ex: 3-1", key="edit_partido_resultado")
+                        edit_fecha = st.date_input("Data:", value=fecha_actual, key=f"edit_fecha_{partido_editar}")
+                        edit_resultado = st.text_input("Resultat:", value=partido_info['resultado'] or "", placeholder="Ex: 3-1", key=f"edit_resultado_{partido_editar}")
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        if st.button("💾 Guardar canvis", type="primary", key="btn_guardar_partido"):
+                        if st.button("💾 Guardar canvis", type="primary", key=f"btn_guardar_{partido_editar}"):
                             try:
                                 with get_engine().begin() as conn:
                                     conn.execute(text("""
@@ -3992,15 +3992,15 @@ def pagina_admin():
                                 st.error(f"❌ Error: {str(e)}")
                     
                     with col2:
-                        if st.button("🗑️ Eliminar partit", type="secondary", key="btn_eliminar_partido_inline"):
+                        if st.button("🗑️ Eliminar partit", type="secondary", key=f"btn_eliminar_{partido_editar}"):
                             st.session_state.confirmar_eliminar_partido = partido_editar
                     
                     # Confirmación de eliminación
                     if st.session_state.get('confirmar_eliminar_partido') == partido_editar:
                         st.error("⚠️ ATENCIÓ: Això eliminarà el partit i totes les seves accions!")
-                        confirmacio_partido = st.text_input("Escriu 'ELIMINAR' per confirmar:", key="confirm_eliminar_partido")
+                        confirmacio_partido = st.text_input("Escriu 'ELIMINAR' per confirmar:", key=f"confirm_eliminar_{partido_editar}")
                         
-                        if st.button("🗑️ Confirmar eliminació", type="secondary", key="btn_confirmar_eliminar_partido"):
+                        if st.button("🗑️ Confirmar eliminació", type="secondary", key=f"btn_confirmar_{partido_editar}"):
                             if confirmacio_partido == "ELIMINAR":
                                 try:
                                     with get_engine().begin() as conn:
