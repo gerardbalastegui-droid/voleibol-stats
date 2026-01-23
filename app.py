@@ -973,7 +973,8 @@ def obtener_badges_equipo(equipo_id, temporada_id, fase_id=None):
                 })
     
     # Ordenar por fecha (más recientes primero)
-    badges.sort(key=lambda x: x['fecha'] if x['fecha'] else '', reverse=True)
+    from datetime import date
+    badges.sort(key=lambda x: x['fecha'] if x['fecha'] else date.min, reverse=True)
     
     return badges
 
