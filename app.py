@@ -1704,6 +1704,70 @@ def pagina_jugador():
         
         st.markdown("---")
         
+        # === RACHA ACTUAL ===
+        if partido_seleccionado == "Tots els partits" and len(partido_ids) >= 2:
+            st.subheader("🔥 Ratxa Actual")
+            
+            # Obtener evolución para analizar rachas
+            df_evolucion = obtener_evolucion_jugador(partido_ids, jugador_id)
+            
+            if not df_evolucion.empty:
+                rachas = []
+                
+                # Analizar cada acción
+                for accion, nombre in [('atacar', 'Atac'), ('recepción', 'Recepció'), ('saque', 'Saque')]:
+                    df_accion = df_evolucion[df_evolucion['tipo_accion'] == accion].sort_values('fecha')
+                    
+                    if len(df_accion) >= 2:
+                        # Contar racha de mejora
+                        racha_mejora = 0
+                        eficacias = df_accion['eficacia'].tolist()
+                        
+                        for i in range(len(eficacias) - 1, 0, -1):
+                            if eficacias[i] >= eficacias[i-1]:
+                                racha_mejora += 1
+                            else:
+                                break
+                        
+                        if racha_mejora >= 2:
+                            rachas.append(f"📈 Llevas **{racha_mejora} partits** millorant en **{nombre.lower()}**!")
+                        
+                        # Mejor partido
+                        mejor_partido = df_accion.loc[df_accion['eficacia'].idxmax()]
+                        if mejor_partido['eficacia'] >= 50:
+                            rachas.append(f"⭐ Millor partit en {nombre.lower()}: **vs {mejor_partido['rival']}** ({mejor_partido['eficacia']}%)")
+                        
+                        # Tendencia temporada
+                        primer_partido = eficacias[0]
+                        ultimo_partido = eficacias[-1]
+                        diferencia = ultimo_partido - primer_partido
+                        
+                        if diferencia >= 10:
+                            rachas.append(f"🚀 Has pujat **{diferencia:.0f}%** en {nombre.lower()} aquesta temporada!")
+                        elif diferencia <= -10:
+                            rachas.append(f"💪 Pots millorar en {nombre.lower()}: has baixat {abs(diferencia):.0f}% des del primer partit")
+                
+                # Calcular puntos totales
+                puntos_totales = 0
+                for accion in ['atacar', 'saque', 'bloqueo']:
+                    df_acc = df_evolucion[df_evolucion['tipo_accion'] == accion]
+                    if not df_acc.empty:
+                        puntos_totales += df_acc['puntos'].sum()
+                
+                if puntos_totales > 0:
+                    rachas.insert(0, f"⚡ **{int(puntos_totales)} punts directes** aquesta temporada!")
+                
+                # Mostrar rachas
+                if rachas:
+                    cols = st.columns(2)
+                    for idx, racha in enumerate(rachas[:4]):  # Máximo 4 rachas
+                        with cols[idx % 2]:
+                            st.info(racha)
+                else:
+                    st.info("📊 Juga més partits per veure les teves ratxes!")
+            
+            st.markdown("---")
+        
         # Determinar partidos a analizar
         if partido_seleccionado == "Tots els partits":
             partido_ids = partidos['id'].tolist()
