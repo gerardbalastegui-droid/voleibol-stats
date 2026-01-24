@@ -4566,17 +4566,6 @@ def sidebar_contexto():
 
 def main():
     """Función principal"""
-    st.write("DEBUG: Entrando a main()")
-    st.write(f"DEBUG: logged_in = {st.session_state.get('logged_in')}")
-    
-    # Verificar si está logueado
-    if not st.session_state.get('logged_in'):
-        st.write("DEBUG: Mostrando login")
-        pagina_login()
-        return
-    
-    st.write("DEBUG: Usuario logueado, mostrando sidebar")
-    """Función principal"""
     # Verificar si está logueado
     if not st.session_state.get('logged_in'):
         pagina_login()
@@ -4600,3 +4589,6 @@ def main():
         pagina_importar()
     elif pagina == "⚙️ Admin":
         pagina_admin()
+
+if __name__ == "__main__":
+    main()
