@@ -978,6 +978,75 @@ def obtener_badges_equipo(equipo_id, temporada_id, fase_id=None):
     
     return badges
 
+@st.cache_data(ttl=60)
+def obtener_distribucion_por_recepcion(partido_ids):
+    """Obtiene la distribución de colocación según zona de recepción y rotación"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    # Mapeo: rotación -> {posición jugador -> zona recepción}
+    mapeo_recepcion = {
+        'p1': {'p2': 'Z1', 'p6': 'Z6', 'p5': 'Z5'},
+        'p2': {'p1': 'Z1', 'p6': 'Z6', 'p3': 'Z5'},
+        'p3': {'p1': 'Z1', 'p5': 'Z6', 'p4': 'Z5'},
+        'p4': {'p6': 'Z1', 'p5': 'Z6', 'p2': 'Z5'},
+        'p5': {'p1': 'Z1', 'p6': 'Z6', 'p3': 'Z5'},
+        'p6': {'p1': 'Z1', 'p5': 'Z6', 'p4': 'Z5'},
+    }
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    partido_id,
+                    tipo_accion,
+                    marca,
+                    zona_jugador,
+                    zona_colocador,
+                    LEAD(tipo_accion) OVER (PARTITION BY partido_id ORDER BY id) as siguiente_accion,
+                    LEAD(tipo_accion, 2) OVER (PARTITION BY partido_id ORDER BY id) as siguiente_accion_2,
+                    LEAD(zona_jugador, 2) OVER (PARTITION BY partido_id ORDER BY id) as zona_ataque,
+                    LEAD(marca, 2) OVER (PARTITION BY partido_id ORDER BY id) as marca_ataque
+                FROM acciones_new
+                WHERE partido_id IN ({ids_str})
+            )
+            SELECT 
+                zona_jugador as posicion_receptor,
+                zona_colocador as rotacion,
+                zona_ataque,
+                marca_ataque,
+                COUNT(*) as cantidad
+            FROM acciones_ordenadas
+            WHERE tipo_accion = 'recepción'
+            AND siguiente_accion = 'colocación'
+            AND siguiente_accion_2 = 'atacar'
+            AND zona_jugador IS NOT NULL
+            AND zona_colocador IS NOT NULL
+            AND zona_ataque IS NOT NULL
+            GROUP BY zona_jugador, zona_colocador, zona_ataque, marca_ataque
+            ORDER BY zona_colocador, zona_jugador, zona_ataque
+        """), conn)
+    
+    if df.empty:
+        return pd.DataFrame()
+    
+    def calcular_zona_recepcion(row):
+        rotacion = row['rotacion'].lower() if row['rotacion'] else None
+        posicion = row['posicion_receptor'].lower() if row['posicion_receptor'] else None
+        
+        if rotacion and posicion and rotacion in mapeo_recepcion:
+            return mapeo_recepcion[rotacion].get(posicion, 'Altres')
+        return 'Altres'
+    
+    df['zona_recepcion'] = df.apply(calcular_zona_recepcion, axis=1)
+    df['zona_ataque'] = df['zona_ataque'].str.upper()
+    df['rotacion'] = df['rotacion'].str.upper()
+    
+    return df
+
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # =============================================================================
@@ -1855,27 +1924,167 @@ def pagina_partido():
     
     with tab4:
         st.subheader("🎯 Distribució del Col·locador")
-        if not df_distribucion.empty:
-            st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True, config={'staticPlot': True})
+        
+        # Sub-tabs dentro de Distribució
+        subtab1, subtab2 = st.tabs(["📊 Per Zona", "🏐 Segons Recepció"])
+        
+        with subtab1:
+            # Contenido original de distribución por zona
+            if not df_distribucion.empty:
+                st.plotly_chart(crear_grafico_distribucion_colocador(df_distribucion), use_container_width=True, config={'staticPlot': True})
+                
+                st.markdown("##### 📋 Detall per Zona")
+                df_dist_display = df_distribucion.rename(columns={
+                    'zona': 'Zona',
+                    'colocaciones': 'Col·locacions',
+                    'porcentaje': '% Total',
+                    'eficacia': 'Eficàcia Atac (%)'
+                })
+                st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
+                
+                max_zona = df_distribucion.loc[df_distribucion['porcentaje'].idxmax()]
+                st.info(f"📊 **Zona més utilitzada:** {max_zona['zona']} ({max_zona['porcentaje']}% del total)")
+                
+                if max_zona['porcentaje'] > 40:
+                    st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
+            else:
+                st.info("No hi ha dades de distribució")
+        
+        with subtab2:
+            st.markdown("""
+            Anàlisi de com distribueix el col·locador segons **des d'on es rep** i en quina **rotació** estem.
+            """)
             
-            # Tabla de distribución
-            st.subheader("📋 Detall per Zona")
-            df_dist_display = df_distribucion.rename(columns={
-                'zona': 'Zona',
-                'colocaciones': 'Col·locacions',
-                'porcentaje': '% Total',
-                'eficacia': 'Eficàcia Atac (%)'
-            })
-            st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
+            df_rec_dist = obtener_distribucion_por_recepcion(partido_ids)
             
-            # Análisis de equilibrio
-            max_zona = df_distribucion.loc[df_distribucion['porcentaje'].idxmax()]
-            st.info(f"📊 **Zona més utilitzada:** {max_zona['zona']} ({max_zona['porcentaje']}% del total)")
-            
-            if max_zona['porcentaje'] > 30:
-                st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
-        else:
-            st.info("No hi ha dades de distribució")
+            if df_rec_dist.empty:
+                st.info("No hi ha dades suficients per aquest anàlisi")
+            else:
+                # Filtros
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    rotaciones_disponibles = ['Totes'] + sorted(df_rec_dist['rotacion'].unique().tolist())
+                    rotacion_filtro = st.selectbox(
+                        "Filtrar per rotació:",
+                        options=rotaciones_disponibles,
+                        key="filtro_rotacion_rec"
+                    )
+                
+                with col2:
+                    zonas_recepcion = ['Totes'] + sorted(df_rec_dist['zona_recepcion'].unique().tolist())
+                    zona_rec_filtro = st.selectbox(
+                        "Filtrar per zona de recepció:",
+                        options=zonas_recepcion,
+                        key="filtro_zona_rec"
+                    )
+                
+                # Aplicar filtros
+                df_filtrado = df_rec_dist.copy()
+                if rotacion_filtro != 'Totes':
+                    df_filtrado = df_filtrado[df_filtrado['rotacion'] == rotacion_filtro]
+                if zona_rec_filtro != 'Totes':
+                    df_filtrado = df_filtrado[df_filtrado['zona_recepcion'] == zona_rec_filtro]
+                
+                if df_filtrado.empty:
+                    st.warning("No hi ha dades amb aquests filtres")
+                else:
+                    # Agrupar por zona de ataque
+                    dist_zona_ataque = df_filtrado.groupby('zona_ataque').agg({
+                        'cantidad': 'sum'
+                    }).reset_index()
+                    
+                    total = dist_zona_ataque['cantidad'].sum()
+                    dist_zona_ataque['porcentaje'] = (dist_zona_ataque['cantidad'] / total * 100).round(1)
+                    
+                    # Calcular eficacia por zona
+                    eficacia_zona = df_filtrado.groupby('zona_ataque').apply(
+                        lambda x: round((x[x['marca_ataque'].isin(['#', '+'])]['cantidad'].sum() / x['cantidad'].sum()) * 100, 1)
+                    ).reset_index()
+                    eficacia_zona.columns = ['zona_ataque', 'eficacia']
+                    
+                    dist_zona_ataque = dist_zona_ataque.merge(eficacia_zona, on='zona_ataque', how='left')
+                    dist_zona_ataque = dist_zona_ataque.sort_values('porcentaje', ascending=False)
+                    
+                    # Gráfico de barras
+                    fig = go.Figure()
+                    
+                    colores = [COLOR_ROJO if p == dist_zona_ataque['porcentaje'].max() else COLOR_NEGRO 
+                              for p in dist_zona_ataque['porcentaje']]
+                    
+                    fig.add_trace(go.Bar(
+                        x=dist_zona_ataque['zona_ataque'],
+                        y=dist_zona_ataque['porcentaje'],
+                        marker_color=colores,
+                        text=dist_zona_ataque['porcentaje'].apply(lambda x: f'{x}%'),
+                        textposition='outside'
+                    ))
+                    
+                    fig.update_layout(
+                        title=f"On col·loca? (Total: {total} atacs)",
+                        xaxis_title="Zona d'Atac",
+                        yaxis_title="% de Col·locacions",
+                        height=350,
+                        yaxis=dict(range=[0, max(dist_zona_ataque['porcentaje']) + 15])
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+                    
+                    # Tabla resumen
+                    st.markdown("##### 📋 Detall per Zona")
+                    df_display = dist_zona_ataque.rename(columns={
+                        'zona_ataque': 'Zona Atac',
+                        'cantidad': 'Col·locacions',
+                        'porcentaje': '% Total',
+                        'eficacia': 'Eficàcia Atac (%)'
+                    })
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    
+                    # Detalle por rotación y zona de recepción
+                    st.markdown("---")
+                    st.markdown("##### 🔄 Detall per Rotació i Zona de Recepció")
+                    
+                    tabla_cruzada = df_rec_dist.groupby(['rotacion', 'zona_recepcion', 'zona_ataque']).agg({
+                        'cantidad': 'sum'
+                    }).reset_index()
+                    
+                    for rotacion in sorted(df_rec_dist['rotacion'].unique()):
+                        with st.expander(f"📍 Rotació {rotacion}"):
+                            df_rot = tabla_cruzada[tabla_cruzada['rotacion'] == rotacion]
+                            
+                            if not df_rot.empty:
+                                for zona_rec in sorted(df_rot['zona_recepcion'].unique()):
+                                    df_zona = df_rot[df_rot['zona_recepcion'] == zona_rec]
+                                    total_zona = df_zona['cantidad'].sum()
+                                    
+                                    st.markdown(f"**Recepció des de {zona_rec}** ({total_zona} accions)")
+                                    
+                                    cols = st.columns(len(df_zona))
+                                    for idx, (_, row) in enumerate(df_zona.iterrows()):
+                                        pct = round(row['cantidad'] / total_zona * 100, 1)
+                                        with cols[idx]:
+                                            st.metric(
+                                                row['zona_ataque'],
+                                                f"{pct}%",
+                                                f"{int(row['cantidad'])} col."
+                                            )
+                                    
+                                    st.markdown("")
+                            else:
+                                st.info("No hi ha dades")
+                    
+                    # Insights
+                    st.markdown("---")
+                    st.markdown("##### 💡 Conclusions")
+                    
+                    zona_preferida = dist_zona_ataque.iloc[0]
+                    zona_eficaz = dist_zona_ataque.loc[dist_zona_ataque['eficacia'].idxmax()]
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success(f"🎯 **Zona preferida:** {zona_preferida['zona_ataque']} ({zona_preferida['porcentaje']}%)")
+                    with col2:
+                        st.success(f"✅ **Més efectiva:** {zona_eficaz['zona_ataque']} ({zona_eficaz['eficacia']}% efic.)")
     
     with tab5:
         st.subheader("⚠️ Anàlisi d'Errors")
