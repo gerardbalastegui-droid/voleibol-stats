@@ -63,6 +63,26 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =============================================================================
+# CONEXIÓN A BASE DE DATOS
+# =============================================================================
+
+@st.cache_resource
+def get_engine():
+    """Crea conexión a la base de datos"""
+    # Usar secrets de Streamlit Cloud si existen
+    if "database" in st.secrets:
+        return create_engine(st.secrets["database"]["url"])
+    else:
+        # Fallback para desarrollo local
+        return create_engine(
+            "postgresql+psycopg2://postgres:navi6573@localhost:5432/voleibol"
+        )
+
+def get_connection():
+    """Obtiene una conexión activa"""
+    return get_engine().connect()
+
+# =============================================================================
 # SISTEMA DE LOGIN
 # =============================================================================
 
@@ -134,25 +154,6 @@ def logout():
         if key in st.session_state:
             del st.session_state[key]
 
-# =============================================================================
-# CONEXIÓN A BASE DE DATOS
-# =============================================================================
-
-@st.cache_resource
-def get_engine():
-    """Crea conexión a la base de datos"""
-    # Usar secrets de Streamlit Cloud si existen
-    if "database" in st.secrets:
-        return create_engine(st.secrets["database"]["url"])
-    else:
-        # Fallback para desarrollo local
-        return create_engine(
-            "postgresql+psycopg2://postgres:navi6573@localhost:5432/voleibol"
-        )
-
-def get_connection():
-    """Obtiene una conexión activa"""
-    return get_engine().connect()
 
 # =============================================================================
 # FUNCIONES DE DATOS
