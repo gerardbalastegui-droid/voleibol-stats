@@ -63,6 +63,78 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =============================================================================
+# SISTEMA DE LOGIN
+# =============================================================================
+
+def verificar_login(username, password):
+    """Verifica credenciales y devuelve info del usuario"""
+    with get_engine().connect() as conn:
+        resultado = conn.execute(text("""
+            SELECT id, username, equipo_id, es_admin
+            FROM usuarios
+            WHERE username = :username AND password = :password AND activo = TRUE
+        """), {"username": username, "password": password}).fetchone()
+        
+        if resultado:
+            return {
+                'id': resultado[0],
+                'username': resultado[1],
+                'equipo_id': resultado[2],
+                'es_admin': resultado[3]
+            }
+        return None
+
+def pagina_login():
+    """Página de login"""
+    st.markdown("""
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 60vh;">
+        <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px;">
+            <h1 style="text-align: center; color: #C8102E;">🏐 Voleibol Stats</h1>
+            <p style="text-align: center; color: #666;">Inicia sessió per continuar</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("### Iniciar Sessió")
+        
+        username = st.text_input("Usuari:", key="login_username")
+        password = st.text_input("Contrasenya:", type="password", key="login_password")
+        
+        if st.button("🔐 Entrar", type="primary", use_container_width=True):
+            if username and password:
+                usuario = verificar_login(username, password)
+                
+                if usuario:
+                    st.session_state.logged_in = True
+                    st.session_state.usuario = usuario
+                    st.session_state.es_admin = usuario['es_admin']
+                    
+                    # Si no es admin, fijar su equipo
+                    if not usuario['es_admin'] and usuario['equipo_id']:
+                        st.session_state.equipo_id = usuario['equipo_id']
+                        # Cargar nombre del equipo
+                        equipos = cargar_equipos()
+                        equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                        if not equipo_info.empty:
+                            st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                    
+                    st.success(f"✅ Benvingut, {usuario['username']}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Usuari o contrasenya incorrectes")
+            else:
+                st.warning("⚠️ Introdueix usuari i contrasenya")
+
+def logout():
+    """Cierra la sesión"""
+    for key in ['logged_in', 'usuario', 'es_admin', 'equipo_id', 'equipo_nombre', 'temporada_id', 'temporada_nombre', 'fase_id']:
+        if key in st.session_state:
+            del st.session_state[key]
+
+# =============================================================================
 # CONEXIÓN A BASE DE DATOS
 # =============================================================================
 
@@ -3659,7 +3731,7 @@ def pagina_admin():
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors", "🏐 Partits"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors", "🏐 Partits", "👤 Usuaris"])
     
     # =================================
     # TAB 1: FASES
@@ -4225,6 +4297,165 @@ def pagina_admin():
                             else:
                                 st.warning("Has d'escriure 'ELIMINAR' per confirmar")
 
+# =================================
+    # TAB 6: USUARIOS
+    # =================================
+    with tab6:
+        st.subheader("👤 Gestió d'Usuaris")
+        
+        # Mostrar usuarios actuales
+        st.markdown("**Usuaris actuals:**")
+        
+        with get_engine().connect() as conn:
+            usuarios_actuales = pd.read_sql(text("""
+                SELECT u.id, u.username, u.es_admin, u.activo, e.nombre as equipo
+                FROM usuarios u
+                LEFT JOIN equipos e ON u.equipo_id = e.id
+                ORDER BY u.es_admin DESC, u.username
+            """), conn)
+        
+        if not usuarios_actuales.empty:
+            df_display = usuarios_actuales.copy()
+            df_display['es_admin'] = df_display['es_admin'].apply(lambda x: '✅ Admin' if x else '👤 Usuari')
+            df_display['activo'] = df_display['activo'].apply(lambda x: '✅ Actiu' if x else '❌ Inactiu')
+            df_display.columns = ['ID', 'Usuari', 'Rol', 'Estat', 'Equip']
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hi ha usuaris creats")
+        
+        st.markdown("---")
+        
+        # Crear nuevo usuario
+        st.markdown("**➕ Crear nou usuari:**")
+        
+        equipos = cargar_equipos()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nuevo_username = st.text_input("Nom d'usuari:", key="nuevo_username")
+            nuevo_password = st.text_input("Contrasenya:", type="password", key="nuevo_password")
+        
+        with col2:
+            equipo_opciones = [None] + equipos['id'].tolist()
+            nuevo_equipo = st.selectbox(
+                "Equip assignat:",
+                options=equipo_opciones,
+                format_func=lambda x: "Cap (Admin)" if x is None else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
+                key="nuevo_usuario_equipo"
+            )
+            nuevo_es_admin = st.checkbox("És administrador?", key="nuevo_es_admin")
+        
+        if st.button("✅ Crear usuari", type="primary", key="btn_crear_usuario"):
+            if not nuevo_username or not nuevo_password:
+                st.error("❌ Has d'introduir usuari i contrasenya")
+            else:
+                try:
+                    with get_engine().begin() as conn:
+                        conn.execute(text("""
+                            INSERT INTO usuarios (username, password, equipo_id, es_admin, activo)
+                            VALUES (:username, :password, :equipo_id, :es_admin, TRUE)
+                        """), {
+                            "username": nuevo_username,
+                            "password": nuevo_password,
+                            "equipo_id": nuevo_equipo,
+                            "es_admin": nuevo_es_admin
+                        })
+                    
+                    st.success(f"✅ Usuari '{nuevo_username}' creat correctament!")
+                    st.rerun()
+                    
+                except Exception as e:
+                    if "unique" in str(e).lower():
+                        st.error("❌ Aquest nom d'usuari ja existeix")
+                    else:
+                        st.error(f"❌ Error: {str(e)}")
+        
+        # Editar/Eliminar usuario
+        st.markdown("---")
+        st.markdown("**✏️ Editar usuari:**")
+        
+        if not usuarios_actuales.empty:
+            usuario_editar = st.selectbox(
+                "Selecciona usuari:",
+                options=[None] + usuarios_actuales['id'].tolist(),
+                format_func=lambda x: "Selecciona..." if x is None else usuarios_actuales[usuarios_actuales['id'] == x]['username'].iloc[0],
+                key="usuario_editar"
+            )
+            
+            if usuario_editar:
+                usuario_info = usuarios_actuales[usuarios_actuales['id'] == usuario_editar].iloc[0]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    edit_password = st.text_input("Nova contrasenya (deixa buit per no canviar):", type="password", key=f"edit_pass_{usuario_editar}")
+                    
+                    # Buscar equipo_id actual
+                    with get_engine().connect() as conn:
+                        equipo_actual = conn.execute(text("SELECT equipo_id FROM usuarios WHERE id = :id"), {"id": usuario_editar}).fetchone()
+                        equipo_actual_id = equipo_actual[0] if equipo_actual else None
+                    
+                    edit_equipo = st.selectbox(
+                        "Equip:",
+                        options=equipo_opciones,
+                        index=equipo_opciones.index(equipo_actual_id) if equipo_actual_id in equipo_opciones else 0,
+                        format_func=lambda x: "Cap (Admin)" if x is None else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
+                        key=f"edit_equipo_{usuario_editar}"
+                    )
+                
+                with col2:
+                    edit_es_admin = st.checkbox("És administrador?", value=usuario_info['es_admin'], key=f"edit_admin_{usuario_editar}")
+                    edit_activo = st.checkbox("Usuari actiu?", value=usuario_info['activo'], key=f"edit_activo_{usuario_editar}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("💾 Guardar canvis", type="primary", key=f"btn_guardar_usuario_{usuario_editar}"):
+                        try:
+                            with get_engine().begin() as conn:
+                                if edit_password:
+                                    conn.execute(text("""
+                                        UPDATE usuarios 
+                                        SET password = :password, equipo_id = :equipo_id, es_admin = :es_admin, activo = :activo
+                                        WHERE id = :id
+                                    """), {
+                                        "password": edit_password,
+                                        "equipo_id": edit_equipo,
+                                        "es_admin": edit_es_admin,
+                                        "activo": edit_activo,
+                                        "id": usuario_editar
+                                    })
+                                else:
+                                    conn.execute(text("""
+                                        UPDATE usuarios 
+                                        SET equipo_id = :equipo_id, es_admin = :es_admin, activo = :activo
+                                        WHERE id = :id
+                                    """), {
+                                        "equipo_id": edit_equipo,
+                                        "es_admin": edit_es_admin,
+                                        "activo": edit_activo,
+                                        "id": usuario_editar
+                                    })
+                            
+                            st.success("✅ Usuari actualitzat!")
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+                
+                with col2:
+                    if st.button("🗑️ Eliminar usuari", type="secondary", key=f"btn_eliminar_usuario_{usuario_editar}"):
+                        try:
+                            with get_engine().begin() as conn:
+                                conn.execute(text("DELETE FROM usuarios WHERE id = :id"), {"id": usuario_editar})
+                            
+                            st.success("✅ Usuari eliminat!")
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
 # =============================================================================
@@ -4237,6 +4468,14 @@ def sidebar_contexto():
     </div>
     """, unsafe_allow_html=True)
     
+    # Mostrar usuario y botón logout
+    if st.session_state.get('logged_in'):
+        usuario = st.session_state.get('usuario', {})
+        st.sidebar.markdown(f"👤 **{usuario.get('username', '')}**")
+        if st.sidebar.button("🚪 Tancar sessió", use_container_width=True):
+            logout()
+            st.rerun()
+    
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Context de Treball")
     
@@ -4244,20 +4483,34 @@ def sidebar_contexto():
     equipos = cargar_equipos()
     temporadas = cargar_temporadas()
     
-    # Selector de equipo con placeholder
-    equipo_options = [None] + equipos['id'].tolist()
-    equipo_id = st.sidebar.selectbox(
-        "Equip:",
-        options=equipo_options,
-        format_func=lambda x: "Selecciona l'equip..." if x is None 
-            else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
-        key='select_equipo'
-    )
+    # Si NO es admin, solo puede ver su equipo
+    es_admin = st.session_state.get('es_admin', False)
+    
+    if es_admin:
+        # Admin puede seleccionar cualquier equipo
+        equipo_options = [None] + equipos['id'].tolist()
+        equipo_id = st.sidebar.selectbox(
+            "Equip:",
+            options=equipo_options,
+            format_func=lambda x: "Selecciona l'equip..." if x is None 
+                else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
+            key='select_equipo'
+        )
+        
+        if equipo_id:
+            st.session_state.equipo_id = equipo_id
+            st.session_state.equipo_nombre = equipos[equipos['id'] == equipo_id]['nombre_completo'].iloc[0]
+    else:
+        # Usuario normal: equipo fijo
+        equipo_id = st.session_state.get('equipo_id')
+        if equipo_id:
+            equipo_nombre = st.session_state.get('equipo_nombre', '')
+            st.sidebar.info(f"🏐 **{equipo_nombre}**")
+        else:
+            st.sidebar.warning("⚠️ No tens equip assignat")
+            equipo_id = None
     
     if equipo_id:
-        st.session_state.equipo_id = equipo_id
-        st.session_state.equipo_nombre = equipos[equipos['id'] == equipo_id]['nombre_completo'].iloc[0]
-        
         # Selector de temporada con placeholder
         temporada_options = [None] + temporadas['id'].tolist()
         temporada_id = st.sidebar.selectbox(
@@ -4299,27 +4552,17 @@ def sidebar_contexto():
         st.session_state.fase_id = None
     
     st.sidebar.markdown("---")
-
-    # =================================
-    # MODO ADMIN
-    # =================================
-    es_admin = False
-    with st.sidebar.expander("🔐 Admin"):
-        password = st.text_input("Contrasenya:", type="password", key="admin_password")
-        if password == st.secrets["ADMIN_PASSWORD"]:
-            es_admin = True
-            st.success("✅ Mode admin activat")
-
-    st.sidebar.markdown("---")
     
     # Navegación
     st.sidebar.subheader("📍 Navegació")
+    
+    es_admin = st.session_state.get('es_admin', False)
     
     if es_admin:
         opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar", "⚙️ Admin"]
     else:
         opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
-
+    
     pagina = st.sidebar.radio(
         "Selecciona secció:",
         options=opciones,
@@ -4329,13 +4572,17 @@ def sidebar_contexto():
     return pagina
 
 
-
 # =============================================================================
 # MAIN
 # =============================================================================
 
 def main():
     """Función principal"""
+    # Verificar si está logueado
+    if not st.session_state.get('logged_in'):
+        pagina_login()
+        return
+    
     # Sidebar y navegación
     pagina = sidebar_contexto()
     
@@ -4354,6 +4601,3 @@ def main():
         pagina_importar()
     elif pagina == "⚙️ Admin":
         pagina_admin()
-
-if __name__ == "__main__":
-    main()
