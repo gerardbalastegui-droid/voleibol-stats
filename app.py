@@ -106,47 +106,34 @@ def verificar_login(username, password):
 
 def pagina_login():
     """Página de login"""
-    st.markdown("""
-    <div style="display: flex; justify-content: center; align-items: center; min-height: 60vh;">
-        <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px;">
-            <h1 style="text-align: center; color: #C8102E;">🏐 Voleibol Stats</h1>
-            <p style="text-align: center; color: #666;">Inicia sessió per continuar</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("🏐 Voleibol Stats")
+    st.subheader("Inicia sessió per continuar")
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    username = st.text_input("Usuari:")
+    password = st.text_input("Contrasenya:", type="password")
     
-    with col2:
-        st.markdown("### Iniciar Sessió")
-        
-        username = st.text_input("Usuari:", key="login_username")
-        password = st.text_input("Contrasenya:", type="password", key="login_password")
-        
-        if st.button("🔐 Entrar", type="primary", use_container_width=True):
-            if username and password:
-                usuario = verificar_login(username, password)
+    if st.button("🔐 Entrar", type="primary"):
+        if username and password:
+            usuario = verificar_login(username, password)
+            
+            if usuario:
+                st.session_state.logged_in = True
+                st.session_state.usuario = usuario
+                st.session_state.es_admin = usuario['es_admin']
                 
-                if usuario:
-                    st.session_state.logged_in = True
-                    st.session_state.usuario = usuario
-                    st.session_state.es_admin = usuario['es_admin']
-                    
-                    # Si no es admin, fijar su equipo
-                    if not usuario['es_admin'] and usuario['equipo_id']:
-                        st.session_state.equipo_id = usuario['equipo_id']
-                        # Cargar nombre del equipo
-                        equipos = cargar_equipos()
-                        equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
-                        if not equipo_info.empty:
-                            st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
-                    
-                    st.success(f"✅ Benvingut, {usuario['username']}!")
-                    st.rerun()
-                else:
-                    st.error("❌ Usuari o contrasenya incorrectes")
+                if not usuario['es_admin'] and usuario['equipo_id']:
+                    st.session_state.equipo_id = usuario['equipo_id']
+                    equipos = cargar_equipos()
+                    equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                    if not equipo_info.empty:
+                        st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                
+                st.success(f"✅ Benvingut, {usuario['username']}!")
+                st.rerun()
             else:
-                st.warning("⚠️ Introdueix usuari i contrasenya")
+                st.error("❌ Usuari o contrasenya incorrectes")
+        else:
+            st.warning("⚠️ Introdueix usuari i contrasenya")
 
 def logout():
     """Cierra la sesión"""
