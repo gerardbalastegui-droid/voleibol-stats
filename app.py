@@ -1182,13 +1182,20 @@ def obtener_puntos_por_set(partido_ids):
         # Sumar +1 al ganador de cada set (el Excel no incluye el último punto)
         if not df.empty:
             for idx, row in df.iterrows():
-                p_local = row['puntos_local'] or 0
-                p_visit = row['puntos_visitante'] or 0
+                p_local = int(row['puntos_local'] or 0)
+                p_visit = int(row['puntos_visitante'] or 0)
+                num_set = int(row['numero_set'])
+                
+                # Set 5 se juega a 15, los demás a 25
+                puntos_minimos = 15 if num_set == 5 else 25
                 
                 if p_local > p_visit:
-                    df.at[idx, 'puntos_local'] = p_local + 1
+                    # Solo sumar si no ha llegado al mínimo o están empatados cerca del final
+                    if p_local < puntos_minimos or (p_local >= puntos_minimos - 1 and p_local - p_visit < 2):
+                        df.at[idx, 'puntos_local'] = p_local + 1
                 elif p_visit > p_local:
-                    df.at[idx, 'puntos_visitante'] = p_visit + 1
+                    if p_visit < puntos_minimos or (p_visit >= puntos_minimos - 1 and p_visit - p_local < 2):
+                        df.at[idx, 'puntos_visitante'] = p_visit + 1
         
         return df
 
