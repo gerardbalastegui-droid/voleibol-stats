@@ -4720,7 +4720,7 @@ def pagina_admin():
                                     """), {
                                         "rival": rival,
                                         "local": local,
-                                        "fecha": date.today(),
+                                        "fecha": None,
                                         "resultado": resultado,
                                         "nombre_archivo": uploaded_file.name,
                                         "equipo_id": st.session_state.equipo_id,
