@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sqlalchemy import create_engine, text
+from datetime import date
 import os
 
 # =============================================================================
@@ -1159,6 +1160,26 @@ def obtener_puntos_por_set(partido_ids):
         """), conn)
         
         return df
+
+def obtener_rival(nombre_archivo):
+    """Extrae el nombre del rival del nombre del archivo"""
+    nombre = nombre_archivo.replace(".xlsx", "")
+    if "_vs_" in nombre.lower():
+        partes = nombre.split("_vs_")
+        if len(partes) > 1:
+            rival_y_tipo = partes[1].split("_")
+            rival = rival_y_tipo[0]
+            return rival.strip()
+    return nombre.strip()
+
+def es_local(nombre_archivo):
+    """Detecta si el partido es local o visitante según el sufijo"""
+    nombre = nombre_archivo.lower()
+    if "home" in nombre:
+        return True
+    elif "guest" in nombre or "away" in nombre:
+        return False
+    return True
 
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
