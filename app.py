@@ -4577,6 +4577,207 @@ def pagina_admin():
                             else:
                                 st.warning("Has d'escriure 'ELIMINAR' per confirmar")
 
+        # Reimportación masiva
+        st.markdown("---")
+        st.subheader("🔄 Reimportar tots els partits")
+        
+        st.warning("""
+        ⚠️ **Atenció:** Això eliminarà TOTS els partits de l'equip i temporada actual i els reimportarà des dels Excel.
+        Utilitza-ho només si necessites actualitzar l'estructura de les dades.
+        """)
+        
+        uploaded_files = st.file_uploader(
+            "Puja tots els arxius Excel dels partits:",
+            type=['xlsx'],
+            accept_multiple_files=True,
+            key="reimport_files"
+        )
+        
+        if uploaded_files:
+            st.info(f"📁 {len(uploaded_files)} arxius seleccionats")
+            
+            # Mostrar lista de archivos
+            with st.expander("📋 Arxius detectats"):
+                for f in uploaded_files:
+                    rival = obtener_rival(f.name)
+                    tipo = "Local" if es_local(f.name) else "Visitant"
+                    st.write(f"• **{rival}** ({tipo}) - `{f.name}`")
+            
+            confirmacio = st.text_input(
+                "Escriu 'REIMPORTAR' per confirmar:",
+                key="confirm_reimport"
+            )
+            
+            if st.button("🔄 Reimportar tots els partits", type="primary", key="btn_reimport"):
+                if confirmacio != "REIMPORTAR":
+                    st.error("Has d'escriure 'REIMPORTAR' per confirmar")
+                else:
+                    try:
+                        with st.spinner("Eliminant partits antics..."):
+                            # Eliminar todos los partidos del equipo/temporada
+                            with get_engine().begin() as conn:
+                                # Obtener IDs de partidos a eliminar
+                                partidos_eliminar = conn.execute(text("""
+                                    SELECT id FROM partidos_new 
+                                    WHERE equipo_id = :equipo_id AND temporada_id = :temporada_id
+                                """), {
+                                    "equipo_id": st.session_state.equipo_id,
+                                    "temporada_id": st.session_state.temporada_id
+                                }).fetchall()
+                                
+                                ids_eliminar = [p[0] for p in partidos_eliminar]
+                                
+                                if ids_eliminar:
+                                    ids_str = ','.join(map(str, ids_eliminar))
+                                    conn.execute(text(f"DELETE FROM acciones_new WHERE partido_id IN ({ids_str})"))
+                                    conn.execute(text(f"DELETE FROM partidos_new WHERE id IN ({ids_str})"))
+                                
+                                st.success(f"✅ Eliminats {len(ids_eliminar)} partits antics")
+                        
+                        # Reimportar cada archivo
+                        partidos_importados = 0
+                        errores = []
+                        
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        for idx, uploaded_file in enumerate(uploaded_files):
+                            try:
+                                status_text.text(f"Important {uploaded_file.name}...")
+                                
+                                # Procesar Excel
+                                df = pd.read_excel(uploaded_file, header=1)
+                                df.columns = [
+                                    "id_accion", "tipo_accion", "marca", "jugador_apellido",
+                                    "jugador_numero", "zona_jugador", "zona_colocador",
+                                    "set_numero", "puntos_local", "puntos_visitante"
+                                ]
+                                
+                                # Filtrar acciones válidas
+                                df_filtrado = df[df['jugador_apellido'].notna() & (df['jugador_apellido'].str.strip() != '')]
+                                df_filtrado = df_filtrado[df_filtrado['tipo_accion'].isin(['recepción', 'colocación', 'atacar', 'saque', 'defensa', 'bloqueo'])]
+                                
+                                # Detectar info del partido
+                                rival = obtener_rival(uploaded_file.name)
+                                local = es_local(uploaded_file.name)
+                                
+                                # Calcular resultado
+                                try:
+                                    sets_info = df_filtrado.groupby('set_numero').agg({
+                                        'puntos_local': 'max',
+                                        'puntos_visitante': 'max'
+                                    }).reset_index()
+                                    
+                                    sets_local = 0
+                                    sets_visitante = 0
+                                    
+                                    for _, row in sets_info.iterrows():
+                                        if int(row['puntos_local']) > int(row['puntos_visitante']):
+                                            sets_local += 1
+                                        else:
+                                            sets_visitante += 1
+                                    
+                                    if local:
+                                        resultado = f"{sets_local}-{sets_visitante}"
+                                    else:
+                                        resultado = f"{sets_visitante}-{sets_local}"
+                                except:
+                                    resultado = None
+                                
+                                # Insertar partido
+                                with get_engine().begin() as conn:
+                                    partido_result = conn.execute(text("""
+                                        INSERT INTO partidos_new (
+                                            rival, local, fecha, resultado, nombre_archivo,
+                                            equipo_id, temporada_id, fase_id
+                                        )
+                                        VALUES (
+                                            :rival, :local, :fecha, :resultado, :nombre_archivo,
+                                            :equipo_id, :temporada_id, :fase_id
+                                        )
+                                        RETURNING id
+                                    """), {
+                                        "rival": rival,
+                                        "local": local,
+                                        "fecha": date.today(),
+                                        "resultado": resultado,
+                                        "nombre_archivo": uploaded_file.name,
+                                        "equipo_id": st.session_state.equipo_id,
+                                        "temporada_id": st.session_state.temporada_id,
+                                        "fase_id": st.session_state.get('fase_id')
+                                    })
+                                    
+                                    partido_id = partido_result.fetchone()[0]
+                                    
+                                    # Insertar acciones
+                                    for _, row in df_filtrado.iterrows():
+                                        apellido = row['jugador_apellido'].strip()
+                                        
+                                        # Obtener o crear jugador
+                                        jugador_result = conn.execute(text("""
+                                            SELECT id FROM jugadores 
+                                            WHERE LOWER(apellido) = LOWER(:apellido) AND equipo_id = :equipo_id
+                                        """), {"apellido": apellido, "equipo_id": st.session_state.equipo_id}).fetchone()
+                                        
+                                        if jugador_result:
+                                            jugador_id = jugador_result[0]
+                                        else:
+                                            jugador_id = conn.execute(text("""
+                                                INSERT INTO jugadores (apellido, equipo_id, activo)
+                                                VALUES (:apellido, :equipo_id, true)
+                                                RETURNING id
+                                            """), {"apellido": apellido, "equipo_id": st.session_state.equipo_id}).fetchone()[0]
+                                        
+                                        # Insertar acción con puntos
+                                        conn.execute(text("""
+                                            INSERT INTO acciones_new (
+                                                partido_id, jugador_id, set_numero, tipo_accion, marca,
+                                                zona_jugador, zona_colocador, puntos_local, puntos_visitante
+                                            )
+                                            VALUES (
+                                                :partido_id, :jugador_id, :set_numero, :tipo_accion, :marca,
+                                                :zona_jugador, :zona_colocador, :puntos_local, :puntos_visitante
+                                            )
+                                        """), {
+                                            "partido_id": partido_id,
+                                            "jugador_id": jugador_id,
+                                            "set_numero": int(row['set_numero']),
+                                            "tipo_accion": row['tipo_accion'],
+                                            "marca": row['marca'],
+                                            "zona_jugador": row['zona_jugador'] if pd.notna(row['zona_jugador']) else None,
+                                            "zona_colocador": row['zona_colocador'] if pd.notna(row['zona_colocador']) else None,
+                                            "puntos_local": int(row['puntos_local']) if pd.notna(row['puntos_local']) else None,
+                                            "puntos_visitante": int(row['puntos_visitante']) if pd.notna(row['puntos_visitante']) else None
+                                        })
+                                
+                                partidos_importados += 1
+                                
+                            except Exception as e:
+                                errores.append(f"{uploaded_file.name}: {str(e)}")
+                            
+                            progress_bar.progress((idx + 1) / len(uploaded_files))
+                        
+                        status_text.empty()
+                        progress_bar.empty()
+                        
+                        # Limpiar caché
+                        st.cache_data.clear()
+                        
+                        # Resultado final
+                        st.success(f"✅ **Reimportació completada!** {partidos_importados}/{len(uploaded_files)} partits importats")
+                        
+                        if errores:
+                            st.error("❌ Errors:")
+                            for err in errores:
+                                st.write(f"  • {err}")
+                        
+                        st.balloons()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error general: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+        
 # =================================
     # TAB 6: USUARIOS
     # =================================
