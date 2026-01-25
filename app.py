@@ -1117,6 +1117,7 @@ def obtener_estadisticas_por_set(partido_ids):
     ids_str = ','.join(map(str, partido_ids))
     
     with get_engine().connect() as conn:
+        # Estadísticas generales por acción
         df = pd.read_sql(text(f"""
             SELECT 
                 set_numero as numero_set,
@@ -1124,8 +1125,7 @@ def obtener_estadisticas_por_set(partido_ids):
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos,
                 COUNT(*) FILTER (WHERE marca = '+') as positivos,
-                COUNT(*) FILTER (WHERE marca = '=') as errores,
-                COUNT(*) FILTER (WHERE marca = '/') as errores_forzados
+                COUNT(*) FILTER (WHERE marca = '=') as errores
             FROM acciones_new
             WHERE partido_id IN ({ids_str})
             AND set_numero IS NOT NULL
@@ -1133,14 +1133,34 @@ def obtener_estadisticas_por_set(partido_ids):
             ORDER BY set_numero, tipo_accion
         """), conn)
         
+        # Errores específicos (solo recepción, atacar, saque con = y error genérico)
+        df_errores = pd.read_sql(text(f"""
+            SELECT 
+                set_numero as numero_set,
+                COUNT(*) as errores_reales
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND set_numero IS NOT NULL
+            AND (
+                (tipo_accion IN ('recepción', 'atacar', 'saque') AND marca = '=')
+                OR tipo_accion = 'error genérico'
+            )
+            GROUP BY set_numero
+            ORDER BY set_numero
+        """), conn)
+        
         if not df.empty:
             df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+        
+        # Añadir errores reales al df
+        df = df.merge(df_errores, on='numero_set', how='left')
+        df['errores_reales'] = df['errores_reales'].fillna(0).astype(int)
         
         return df
 
 @st.cache_data(ttl=60)
 def obtener_puntos_por_set(partido_ids):
-    """Obtiene el marcador final de cada set"""
+    """Obtiene el marcador final de cada set (sumando +1 al ganador)"""
     if isinstance(partido_ids, int):
         partido_ids = [partido_ids]
     
@@ -1158,6 +1178,17 @@ def obtener_puntos_por_set(partido_ids):
             GROUP BY set_numero
             ORDER BY set_numero
         """), conn)
+        
+        # Sumar +1 al ganador de cada set (el Excel no incluye el último punto)
+        if not df.empty:
+            for idx, row in df.iterrows():
+                p_local = row['puntos_local'] or 0
+                p_visit = row['puntos_visitante'] or 0
+                
+                if p_local > p_visit:
+                    df.at[idx, 'puntos_local'] = p_local + 1
+                elif p_visit > p_local:
+                    df.at[idx, 'puntos_visitante'] = p_visit + 1
         
         return df
 
@@ -2317,8 +2348,8 @@ def pagina_partido():
                 bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
                 puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
                 
-                # Errores totales
-                errores_total = df_set['errores'].sum() + df_set['errores_forzados'].sum()
+                # Errores reales (solo recepción, ataque, saque = y error genérico)
+                errores_total = df_set['errores_reales'].iloc[0] if 'errores_reales' in df_set.columns and not df_set.empty else 0
                 
                 # Puntos directos totales
                 puntos_directos = puntos_ataque + puntos_saque + puntos_bloqueo
