@@ -1199,6 +1199,131 @@ def obtener_puntos_por_set(partido_ids):
         
         return df
 
+@st.cache_data(ttl=60)
+def obtener_tendencias_equipo(equipo_id, temporada_id, fase_id=None):
+    """Obtiene estadísticas del equipo partido a partido para ver tendencias"""
+    
+    with get_engine().connect() as conn:
+        # Construir query base
+        fase_filter = "AND p.fase_id = :fase_id" if fase_id else ""
+        params = {"equipo_id": equipo_id, "temporada_id": temporada_id}
+        if fase_id:
+            params["fase_id"] = fase_id
+        
+        df = pd.read_sql(text(f"""
+            SELECT 
+                p.id as partido_id,
+                p.rival,
+                p.local,
+                p.fecha,
+                p.resultado,
+                
+                -- Ataque
+                COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar') as ataques_total,
+                ROUND((COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar' AND a.marca IN ('#','+'))::decimal / 
+                    NULLIF(COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar'), 0)) * 100, 1) as eficacia_ataque,
+                
+                -- Recepción
+                COUNT(*) FILTER (WHERE a.tipo_accion = 'recepción') as recepciones_total,
+                ROUND((COUNT(*) FILTER (WHERE a.tipo_accion = 'recepción' AND a.marca IN ('#','+'))::decimal / 
+                    NULLIF(COUNT(*) FILTER (WHERE a.tipo_accion = 'recepción'), 0)) * 100, 1) as eficacia_recepcion,
+                
+                -- Puntos directos
+                COUNT(*) FILTER (WHERE a.tipo_accion = 'atacar' AND a.marca = '#') as puntos_ataque,
+                COUNT(*) FILTER (WHERE a.tipo_accion = 'saque' AND a.marca = '#') as puntos_saque,
+                COUNT(*) FILTER (WHERE a.tipo_accion = 'bloqueo' AND a.marca = '#') as puntos_bloqueo,
+                
+                -- Errores (solo recepción, ataque, saque = y error genérico)
+                COUNT(*) FILTER (WHERE 
+                    (a.tipo_accion IN ('recepción', 'atacar', 'saque') AND a.marca = '=')
+                    OR a.tipo_accion = 'error genérico'
+                ) as errores
+                
+            FROM partidos_new p
+            LEFT JOIN acciones_new a ON p.id = a.partido_id
+            WHERE p.equipo_id = :equipo_id 
+            AND p.temporada_id = :temporada_id
+            {fase_filter}
+            GROUP BY p.id, p.rival, p.local, p.fecha, p.resultado
+            ORDER BY p.fecha ASC, p.id ASC
+        """), conn, params=params)
+        
+        if not df.empty:
+            # Calcular puntos directos totales
+            df['puntos_directos'] = df['puntos_ataque'] + df['puntos_saque'] + df['puntos_bloqueo']
+            
+            # Crear etiqueta del partido
+            df['partido_display'] = df.apply(
+                lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
+            )
+            
+            # Determinar victoria/derrota
+            def es_victoria(resultado):
+                if not resultado:
+                    return None
+                try:
+                    partes = resultado.split('-')
+                    return int(partes[0]) > int(partes[1])
+                except:
+                    return None
+            
+            df['victoria'] = df['resultado'].apply(es_victoria)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_sideout_por_partido(equipo_id, temporada_id, fase_id=None):
+    """Obtiene el % de side-out partido a partido"""
+    
+    with get_engine().connect() as conn:
+        fase_filter = "AND p.fase_id = :fase_id" if fase_id else ""
+        params = {"equipo_id": equipo_id, "temporada_id": temporada_id}
+        if fase_id:
+            params["fase_id"] = fase_id
+        
+        df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    p.id as partido_id,
+                    p.rival,
+                    p.fecha,
+                    a.tipo_accion,
+                    a.marca,
+                    LAG(a.tipo_accion) OVER (PARTITION BY p.id ORDER BY a.id) as accion_previa,
+                    LAG(a.tipo_accion, 2) OVER (PARTITION BY p.id ORDER BY a.id) as accion_previa_2
+                FROM partidos_new p
+                JOIN acciones_new a ON p.id = a.partido_id
+                WHERE p.equipo_id = :equipo_id 
+                AND p.temporada_id = :temporada_id
+                {fase_filter}
+            ),
+            ataques_sideout AS (
+                SELECT 
+                    partido_id,
+                    COUNT(*) as total_sideout,
+                    COUNT(*) FILTER (WHERE marca IN ('#', '+')) as sideout_positivo
+                FROM acciones_ordenadas
+                WHERE tipo_accion = 'atacar'
+                AND (accion_previa = 'recepción' OR 
+                     (accion_previa = 'colocación' AND accion_previa_2 = 'recepción'))
+                GROUP BY partido_id
+            )
+            SELECT 
+                p.id as partido_id,
+                p.rival,
+                p.fecha,
+                COALESCE(s.total_sideout, 0) as total_sideout,
+                ROUND((s.sideout_positivo::decimal / NULLIF(s.total_sideout, 0)) * 100, 1) as eficacia_sideout
+            FROM partidos_new p
+            LEFT JOIN ataques_sideout s ON p.id = s.partido_id
+            WHERE p.equipo_id = :equipo_id 
+            AND p.temporada_id = :temporada_id
+            {fase_filter}
+            ORDER BY p.fecha ASC, p.id ASC
+        """), conn, params=params)
+        
+        return df
+
 def obtener_rival(nombre_archivo):
     """Extrae el nombre del rival del nombre del archivo"""
     nombre = nombre_archivo.replace(".xlsx", "")
@@ -3220,7 +3345,7 @@ def pagina_comparativa():
         st.warning("⚠️ Selecciona primer un equip i temporada al menú lateral")
         return
     
-    tab1, tab2 = st.tabs(["⚔️ Comparar Partits", "👥 Comparar Jugadors"])
+    tab1, tab2, tab3 = st.tabs(["⚔️ Comparar Partits", "👥 Comparar Jugadors", "📈 Tendències Equip"])
     
     # =================================
     # TAB 1: COMPARAR PARTIDOS
@@ -3750,6 +3875,250 @@ def pagina_comparativa():
         
         elif jugador1_id and jugador2_id and jugador1_id == jugador2_id:
             st.warning("Selecciona dos jugadors diferents per comparar")
+
+    # =================================
+    # TAB 3: TENDENCIAS DEL EQUIPO
+    # =================================
+    with tab3:
+        st.subheader("📈 Tendències de l'Equip")
+        
+        df_tendencias = obtener_tendencias_equipo(
+            st.session_state.equipo_id,
+            st.session_state.temporada_id,
+            st.session_state.get('fase_id')
+        )
+        
+        if df_tendencias.empty:
+            st.info("No hi ha dades suficients per mostrar tendències")
+        else:
+            # Resumen general
+            st.markdown("##### 📊 Resum de la Temporada")
+            
+            total_partidos = len(df_tendencias)
+            victorias = df_tendencias['victoria'].sum() if 'victoria' in df_tendencias.columns else 0
+            derrotas = total_partidos - victorias if victorias else 0
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            col1.metric("Partits", total_partidos)
+            col2.metric("Victòries", int(victorias), f"{int(victorias/total_partidos*100)}%" if total_partidos > 0 else "0%")
+            col3.metric("Derrotes", int(derrotas))
+            col4.metric("Punts Directes/Partit", f"{df_tendencias['puntos_directos'].mean():.1f}")
+            
+            st.markdown("---")
+            
+            # Gráfico de evolución de eficacia
+            st.markdown("##### 🔥 Evolució d'Eficàcia")
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatter(
+                x=df_tendencias['partido_display'],
+                y=df_tendencias['eficacia_ataque'],
+                mode='lines+markers',
+                name='Atac',
+                line=dict(color=COLOR_ROJO, width=3),
+                marker=dict(size=10)
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=df_tendencias['partido_display'],
+                y=df_tendencias['eficacia_recepcion'],
+                mode='lines+markers',
+                name='Recepció',
+                line=dict(color=COLOR_NEGRO, width=3),
+                marker=dict(size=10)
+            ))
+            
+            # Líneas de referencia
+            fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
+                          annotation_text="Bo (60%)")
+            fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
+                          annotation_text="Regular (40%)")
+            
+            # Marcar victorias/derrotas con color de fondo
+            for idx, row in df_tendencias.iterrows():
+                if row['victoria'] == True:
+                    fig.add_vrect(
+                        x0=idx - 0.4, x1=idx + 0.4,
+                        fillcolor="rgba(76, 175, 80, 0.1)",
+                        line_width=0
+                    )
+                elif row['victoria'] == False:
+                    fig.add_vrect(
+                        x0=idx - 0.4, x1=idx + 0.4,
+                        fillcolor="rgba(244, 67, 54, 0.1)",
+                        line_width=0
+                    )
+            
+            fig.update_layout(
+                title="Eficàcia Atac i Recepció per Partit",
+                xaxis_title="Partit",
+                yaxis_title="Eficàcia (%)",
+                height=400,
+                yaxis=dict(range=[0, 100]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                xaxis_tickangle=-45
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+            
+            st.caption("🟢 Fons verd = Victòria | 🔴 Fons vermell = Derrota")
+            
+            # Gráfico de puntos directos y errores
+            st.markdown("---")
+            st.markdown("##### ⚡ Punts Directes vs Errors")
+            
+            fig2 = go.Figure()
+            
+            fig2.add_trace(go.Bar(
+                x=df_tendencias['partido_display'],
+                y=df_tendencias['puntos_directos'],
+                name='Punts Directes',
+                marker_color=COLOR_VERDE
+            ))
+            
+            fig2.add_trace(go.Bar(
+                x=df_tendencias['partido_display'],
+                y=df_tendencias['errores'],
+                name='Errors',
+                marker_color=COLOR_ROJO
+            ))
+            
+            # Línea de balance
+            df_tendencias['balance'] = df_tendencias['puntos_directos'] - df_tendencias['errores']
+            
+            fig2.add_trace(go.Scatter(
+                x=df_tendencias['partido_display'],
+                y=df_tendencias['balance'],
+                mode='lines+markers',
+                name='Balanç',
+                line=dict(color=COLOR_AMARILLO, width=2, dash='dot'),
+                marker=dict(size=8)
+            ))
+            
+            fig2.update_layout(
+                title="Punts Directes, Errors i Balanç per Partit",
+                xaxis_title="Partit",
+                yaxis_title="Quantitat",
+                height=400,
+                barmode='group',
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                xaxis_tickangle=-45
+            )
+            
+            st.plotly_chart(fig2, use_container_width=True, config={'staticPlot': True})
+            
+            # Gráfico de Side-out
+            st.markdown("---")
+            st.markdown("##### 🎯 Evolució del Side-out")
+            
+            df_sideout = obtener_sideout_por_partido(
+                st.session_state.equipo_id,
+                st.session_state.temporada_id,
+                st.session_state.get('fase_id')
+            )
+            
+            if not df_sideout.empty and df_sideout['eficacia_sideout'].notna().any():
+                fig3 = go.Figure()
+                
+                fig3.add_trace(go.Scatter(
+                    x=[f"vs {r}" for r in df_sideout['rival']],
+                    y=df_sideout['eficacia_sideout'],
+                    mode='lines+markers+text',
+                    name='Side-out',
+                    line=dict(color=COLOR_ROJO, width=3),
+                    marker=dict(size=12),
+                    text=df_sideout['eficacia_sideout'].apply(lambda x: f'{x}%' if pd.notna(x) else ''),
+                    textposition='top center'
+                ))
+                
+                fig3.add_hline(y=50, line_dash="dash", line_color=COLOR_VERDE, 
+                              annotation_text="Objectiu (50%)")
+                
+                fig3.update_layout(
+                    title="% Side-out per Partit",
+                    xaxis_title="Partit",
+                    yaxis_title="Side-out (%)",
+                    height=350,
+                    yaxis=dict(range=[0, 80]),
+                    xaxis_tickangle=-45
+                )
+                
+                st.plotly_chart(fig3, use_container_width=True, config={'staticPlot': True})
+            
+            # Insights automáticos
+            st.markdown("---")
+            st.markdown("##### 💡 Insights")
+            
+            insights = []
+            
+            # Tendencia de ataque (últimos 5 partidos vs primeros 5)
+            if len(df_tendencias) >= 5:
+                primeros_5_ataque = df_tendencias.head(5)['eficacia_ataque'].mean()
+                ultimos_5_ataque = df_tendencias.tail(5)['eficacia_ataque'].mean()
+                diff_ataque = ultimos_5_ataque - primeros_5_ataque
+                
+                if diff_ataque > 5:
+                    insights.append(f"📈 **Millora en atac:** +{diff_ataque:.1f}% en els últims 5 partits")
+                elif diff_ataque < -5:
+                    insights.append(f"📉 **Baixada en atac:** {diff_ataque:.1f}% en els últims 5 partits")
+                
+                primeros_5_rec = df_tendencias.head(5)['eficacia_recepcion'].mean()
+                ultimos_5_rec = df_tendencias.tail(5)['eficacia_recepcion'].mean()
+                diff_rec = ultimos_5_rec - primeros_5_rec
+                
+                if diff_rec > 5:
+                    insights.append(f"📈 **Millora en recepció:** +{diff_rec:.1f}% en els últims 5 partits")
+                elif diff_rec < -5:
+                    insights.append(f"📉 **Baixada en recepció:** {diff_rec:.1f}% en els últims 5 partits")
+            
+            # Mejor y peor partido
+            mejor_partido = df_tendencias.loc[df_tendencias['eficacia_ataque'].idxmax()]
+            peor_partido = df_tendencias.loc[df_tendencias['eficacia_ataque'].idxmin()]
+            
+            insights.append(f"🔥 **Millor partit en atac:** vs {mejor_partido['rival']} ({mejor_partido['eficacia_ataque']}%)")
+            insights.append(f"⚠️ **Pitjor partit en atac:** vs {peor_partido['rival']} ({peor_partido['eficacia_ataque']}%)")
+            
+            # Racha de victorias/derrotas
+            if 'victoria' in df_tendencias.columns:
+                racha_actual = 0
+                tipo_racha = None
+                
+                for v in df_tendencias['victoria'].iloc[::-1]:  # Recorrer de más reciente a más antiguo
+                    if tipo_racha is None:
+                        tipo_racha = v
+                        racha_actual = 1
+                    elif v == tipo_racha:
+                        racha_actual += 1
+                    else:
+                        break
+                
+                if racha_actual >= 2 and tipo_racha == True:
+                    insights.append(f"🏆 **Ratxa actual:** {racha_actual} victòries seguides!")
+                elif racha_actual >= 2 and tipo_racha == False:
+                    insights.append(f"💪 **A trencar la ratxa:** {racha_actual} derrotes seguides")
+            
+            # Media de puntos directos
+            media_puntos = df_tendencias['puntos_directos'].mean()
+            insights.append(f"⚡ **Mitjana de punts directes:** {media_puntos:.1f} per partit")
+            
+            # Media de errores
+            media_errores = df_tendencias['errores'].mean()
+            insights.append(f"❌ **Mitjana d'errors:** {media_errores:.1f} per partit")
+            
+            # Mostrar insights
+            col1, col2 = st.columns(2)
+            for idx, insight in enumerate(insights):
+                with col1 if idx % 2 == 0 else col2:
+                    st.info(insight)
+            
+            # Tabla resumen
+            st.markdown("---")
+            with st.expander("📋 Taula detallada"):
+                df_display = df_tendencias[['partido_display', 'resultado', 'eficacia_ataque', 'eficacia_recepcion', 'puntos_directos', 'errores', 'balance']].copy()
+                df_display.columns = ['Partit', 'Resultat', 'Efic. Atac (%)', 'Efic. Recep. (%)', 'Punts Directes', 'Errors', 'Balanç']
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 def pagina_fichas():
     """Página de fichas individuales de jugadores"""
