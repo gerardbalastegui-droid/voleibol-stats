@@ -373,11 +373,11 @@ def pagina_importar_partido(get_engine_func):
                         conn.execute(text("""
                             INSERT INTO acciones_new (
                                 partido_id, jugador_id, set_numero, tipo_accion, marca,
-                                zona_jugador, zona_colocador
+                                zona_jugador, zona_colocador, puntos_local, puntos_visitante
                             )
                             VALUES (
                                 :partido_id, :jugador_id, :set_numero, :tipo_accion, :marca,
-                                :zona_jugador, :zona_colocador
+                                :zona_jugador, :zona_colocador, :puntos_local, :puntos_visitante
                             )
                         """), {
                             "partido_id": partido_id,
@@ -386,7 +386,9 @@ def pagina_importar_partido(get_engine_func):
                             "tipo_accion": row['tipo_accion'],
                             "marca": row['marca'],
                             "zona_jugador": row['zona_jugador'] if pd.notna(row['zona_jugador']) else None,
-                            "zona_colocador": row['zona_colocador'] if pd.notna(row['zona_colocador']) else None
+                            "zona_colocador": row['zona_colocador'] if pd.notna(row['zona_colocador']) else None,
+                            "puntos_local": int(row['puntos_local']) if pd.notna(row['puntos_local']) else None,
+                            "puntos_visitante": int(row['puntos_visitante']) if pd.notna(row['puntos_visitante']) else None
                         })
                 
                 # Limpiar caché para que se actualicen los datos
