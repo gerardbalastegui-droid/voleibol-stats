@@ -1107,6 +1107,59 @@ def obtener_distribucion_por_recepcion(partido_ids):
     
     return df
 
+@st.cache_data(ttl=60)
+def obtener_estadisticas_por_set(partido_ids):
+    """Obtiene estadísticas desglosadas por set"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                numero_set,
+                tipo_accion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE marca = '+') as positivos,
+                COUNT(*) FILTER (WHERE marca = '=') as errores,
+                COUNT(*) FILTER (WHERE marca = '/') as errores_forzados
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND numero_set IS NOT NULL
+            GROUP BY numero_set, tipo_accion
+            ORDER BY numero_set, tipo_accion
+        """), conn)
+        
+        if not df.empty:
+            df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_puntos_por_set(partido_ids):
+    """Obtiene el marcador final de cada set"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                numero_set,
+                MAX(puntos_local) as puntos_local,
+                MAX(puntos_visitante) as puntos_visitante
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND numero_set IS NOT NULL
+            GROUP BY numero_set
+            ORDER BY numero_set
+        """), conn)
+        
+        return df
+
 # =============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # =============================================================================
@@ -1823,12 +1876,13 @@ def pagina_partido():
     # === TABS DE ANÁLISIS ===
     st.markdown("---")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Accions", 
         "⚔️ Side-out", 
         "🔄 Rotacions",
         "🎯 Distribució",
-        "⚠️ Errors"
+        "⚠️ Errors",
+        "📈 Sets"
     ])
     
     with tab1:
@@ -2175,6 +2229,244 @@ def pagina_partido():
             st.metric("Total Errors", total_errores)
         else:
             st.info("No hi ha dades d'errors")
+
+    with tab6:
+        st.subheader("📈 Anàlisi per Sets")
+        
+        df_sets = obtener_estadisticas_por_set(partido_ids)
+        df_puntos_sets = obtener_puntos_por_set(partido_ids)
+        
+        if df_sets.empty:
+            st.info("No hi ha dades de sets disponibles")
+        else:
+            # Mostrar resultados de sets
+            if not df_puntos_sets.empty:
+                st.markdown("##### 🏐 Resultat per Set")
+                
+                cols_sets = st.columns(len(df_puntos_sets))
+                for idx, (_, row) in enumerate(df_puntos_sets.iterrows()):
+                    with cols_sets[idx]:
+                        p_local = int(row['puntos_local']) if row['puntos_local'] else 0
+                        p_visit = int(row['puntos_visitante']) if row['puntos_visitante'] else 0
+                        
+                        # Determinar ganador del set
+                        if p_local > p_visit:
+                            color_resultado = COLOR_VERDE
+                            icono = "✅"
+                        elif p_local < p_visit:
+                            color_resultado = COLOR_ROJO
+                            icono = "❌"
+                        else:
+                            color_resultado = COLOR_NARANJA
+                            icono = "➡️"
+                        
+                        st.markdown(f"""
+                        <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado};">
+                            <strong>Set {int(row['numero_set'])}</strong><br>
+                            <span style="font-size: 1.5rem; font-weight: bold;">{p_local} - {p_visit}</span>
+                            <span style="font-size: 1.2rem;">{icono}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+            
+            # Preparar datos por set
+            sets_disponibles = sorted(df_sets['numero_set'].unique())
+            
+            # Calcular métricas por set
+            metricas_sets = []
+            
+            for num_set in sets_disponibles:
+                df_set = df_sets[df_sets['numero_set'] == num_set]
+                
+                # Ataque
+                ataque = df_set[df_set['tipo_accion'] == 'atacar']
+                efic_ataque = float(ataque['eficacia'].iloc[0]) if not ataque.empty else 0
+                puntos_ataque = int(ataque['puntos'].iloc[0]) if not ataque.empty else 0
+                
+                # Recepción
+                recepcion = df_set[df_set['tipo_accion'] == 'recepción']
+                efic_recepcion = float(recepcion['eficacia'].iloc[0]) if not recepcion.empty else 0
+                
+                # Saque
+                saque = df_set[df_set['tipo_accion'] == 'saque']
+                puntos_saque = int(saque['puntos'].iloc[0]) if not saque.empty else 0
+                
+                # Bloqueo
+                bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
+                puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
+                
+                # Errores totales
+                errores_total = df_set['errores'].sum() + df_set['errores_forzados'].sum()
+                
+                # Puntos directos totales
+                puntos_directos = puntos_ataque + puntos_saque + puntos_bloqueo
+                
+                metricas_sets.append({
+                    'set': int(num_set),
+                    'efic_ataque': efic_ataque,
+                    'efic_recepcion': efic_recepcion,
+                    'puntos_directos': puntos_directos,
+                    'puntos_ataque': puntos_ataque,
+                    'puntos_saque': puntos_saque,
+                    'puntos_bloqueo': puntos_bloqueo,
+                    'errores': int(errores_total)
+                })
+            
+            df_metricas = pd.DataFrame(metricas_sets)
+            
+            # Gráfico comparativo de eficacia por set
+            st.markdown("##### 📊 Eficàcia per Set")
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Bar(
+                name='Atac',
+                x=[f"Set {s}" for s in df_metricas['set']],
+                y=df_metricas['efic_ataque'],
+                marker_color=COLOR_ROJO,
+                text=df_metricas['efic_ataque'].apply(lambda x: f'{x}%'),
+                textposition='outside'
+            ))
+            
+            fig.add_trace(go.Bar(
+                name='Recepció',
+                x=[f"Set {s}" for s in df_metricas['set']],
+                y=df_metricas['efic_recepcion'],
+                marker_color=COLOR_NEGRO,
+                text=df_metricas['efic_recepcion'].apply(lambda x: f'{x}%'),
+                textposition='outside'
+            ))
+            
+            fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
+                          annotation_text="Bo (60%)")
+            fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
+                          annotation_text="Regular (40%)")
+            
+            fig.update_layout(
+                barmode='group',
+                height=400,
+                yaxis=dict(range=[0, max(df_metricas['efic_ataque'].max(), df_metricas['efic_recepcion'].max()) + 15]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+            
+            # Gráfico de puntos directos y errores
+            st.markdown("##### ⚡ Punts Directes i Errors per Set")
+            
+            fig2 = go.Figure()
+            
+            fig2.add_trace(go.Bar(
+                name='Punts Directes',
+                x=[f"Set {s}" for s in df_metricas['set']],
+                y=df_metricas['puntos_directos'],
+                marker_color=COLOR_VERDE,
+                text=df_metricas['puntos_directos'],
+                textposition='outside'
+            ))
+            
+            fig2.add_trace(go.Bar(
+                name='Errors',
+                x=[f"Set {s}" for s in df_metricas['set']],
+                y=df_metricas['errores'],
+                marker_color=COLOR_ROJO,
+                text=df_metricas['errores'],
+                textposition='outside'
+            ))
+            
+            fig2.update_layout(
+                barmode='group',
+                height=350,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            )
+            
+            st.plotly_chart(fig2, use_container_width=True, config={'staticPlot': True})
+            
+            # Tabla detallada
+            st.markdown("##### 📋 Detall per Set")
+            
+            df_tabla = df_metricas.rename(columns={
+                'set': 'Set',
+                'efic_ataque': 'Efic. Atac (%)',
+                'efic_recepcion': 'Efic. Recep. (%)',
+                'puntos_directos': 'Punts Directes',
+                'puntos_ataque': '# Atac',
+                'puntos_saque': '# Saque',
+                'puntos_bloqueo': '# Bloc',
+                'errores': 'Errors'
+            })
+            
+            st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+            
+            # Insights automáticos
+            st.markdown("---")
+            st.markdown("##### 💡 Insights")
+            
+            insights = []
+            
+            # Mejor y peor set en ataque
+            mejor_set_ataque = df_metricas.loc[df_metricas['efic_ataque'].idxmax()]
+            peor_set_ataque = df_metricas.loc[df_metricas['efic_ataque'].idxmin()]
+            
+            if mejor_set_ataque['efic_ataque'] != peor_set_ataque['efic_ataque']:
+                insights.append(f"🔥 **Millor set en atac:** Set {int(mejor_set_ataque['set'])} ({mejor_set_ataque['efic_ataque']}%)")
+                insights.append(f"⚠️ **Pitjor set en atac:** Set {int(peor_set_ataque['set'])} ({peor_set_ataque['efic_ataque']}%)")
+            
+            # Mejor y peor set en recepción
+            mejor_set_rec = df_metricas.loc[df_metricas['efic_recepcion'].idxmax()]
+            peor_set_rec = df_metricas.loc[df_metricas['efic_recepcion'].idxmin()]
+            
+            if mejor_set_rec['efic_recepcion'] != peor_set_rec['efic_recepcion']:
+                insights.append(f"🎯 **Millor set en recepció:** Set {int(mejor_set_rec['set'])} ({mejor_set_rec['efic_recepcion']}%)")
+            
+            # Set con más errores
+            set_mas_errores = df_metricas.loc[df_metricas['errores'].idxmax()]
+            if set_mas_errores['errores'] > 0:
+                insights.append(f"❌ **Més errors:** Set {int(set_mas_errores['set'])} ({int(set_mas_errores['errores'])} errors)")
+            
+            # Set con más puntos directos
+            set_mas_puntos = df_metricas.loc[df_metricas['puntos_directos'].idxmax()]
+            insights.append(f"⚡ **Més punts directes:** Set {int(set_mas_puntos['set'])} ({int(set_mas_puntos['puntos_directos'])} punts)")
+            
+            # Detectar tendencia (bajada en sets finales)
+            if len(df_metricas) >= 3:
+                efic_inicio = df_metricas.iloc[0]['efic_ataque']
+                efic_final = df_metricas.iloc[-1]['efic_ataque']
+                
+                if efic_inicio - efic_final > 10:
+                    insights.append(f"📉 **Alerta:** Tendència a baixar en atac cap als sets finals (-{efic_inicio - efic_final:.0f}%)")
+                elif efic_final - efic_inicio > 10:
+                    insights.append(f"📈 **Positiu:** Millora d'atac a mesura que avança el partit (+{efic_final - efic_inicio:.0f}%)")
+            
+            # Correlación victoria/eficacia
+            if not df_puntos_sets.empty and len(df_puntos_sets) > 1:
+                sets_ganados = []
+                sets_perdidos = []
+                
+                for idx, row in df_puntos_sets.iterrows():
+                    p_local = int(row['puntos_local']) if row['puntos_local'] else 0
+                    p_visit = int(row['puntos_visitante']) if row['puntos_visitante'] else 0
+                    num_set = int(row['numero_set'])
+                    
+                    metricas_set = df_metricas[df_metricas['set'] == num_set]
+                    if not metricas_set.empty:
+                        efic = metricas_set.iloc[0]['efic_ataque']
+                        if p_local > p_visit:
+                            sets_ganados.append(efic)
+                        elif p_local < p_visit:
+                            sets_perdidos.append(efic)
+                
+                if sets_ganados and sets_perdidos:
+                    media_ganados = sum(sets_ganados) / len(sets_ganados)
+                    media_perdidos = sum(sets_perdidos) / len(sets_perdidos)
+                    insights.append(f"📊 **Quan guanyeu:** {media_ganados:.0f}% efic. atac | **Quan perdeu:** {media_perdidos:.0f}%")
+            
+            # Mostrar insights
+            col1, col2 = st.columns(2)
+            for idx, insight in enumerate(insights):
+                with col1 if idx % 2 == 0 else col2:
+                    st.info(insight)
     
     # === RANKINGS ===
     st.markdown("---")
