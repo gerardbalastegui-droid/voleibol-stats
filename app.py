@@ -4730,26 +4730,44 @@ def pagina_admin():
                                     
                                     partido_id = partido_result.fetchone()[0]
                                     
-                                    # Insertar acciones
-                                    for _, row in df_filtrado.iterrows():
-                                        apellido = row['jugador_apellido'].strip()
-                                        
-                                        # Obtener o crear jugador
+                                    # Primero, obtener/crear todos los jugadores
+                                    apellidos_unicos = df_filtrado['jugador_apellido'].str.strip().unique()
+                                    jugadores_map = {}
+                                    
+                                    for apellido in apellidos_unicos:
                                         jugador_result = conn.execute(text("""
                                             SELECT id FROM jugadores 
                                             WHERE LOWER(apellido) = LOWER(:apellido) AND equipo_id = :equipo_id
                                         """), {"apellido": apellido, "equipo_id": st.session_state.equipo_id}).fetchone()
                                         
                                         if jugador_result:
-                                            jugador_id = jugador_result[0]
+                                            jugadores_map[apellido.lower()] = jugador_result[0]
                                         else:
-                                            jugador_id = conn.execute(text("""
+                                            nuevo_id = conn.execute(text("""
                                                 INSERT INTO jugadores (apellido, equipo_id, activo)
                                                 VALUES (:apellido, :equipo_id, true)
                                                 RETURNING id
                                             """), {"apellido": apellido, "equipo_id": st.session_state.equipo_id}).fetchone()[0]
-                                        
-                                        # Insertar acción con puntos
+                                            jugadores_map[apellido.lower()] = nuevo_id
+                                    
+                                    # Preparar todas las acciones para insert batch
+                                    acciones_batch = []
+                                    for _, row in df_filtrado.iterrows():
+                                        apellido = row['jugador_apellido'].strip().lower()
+                                        acciones_batch.append({
+                                            "partido_id": partido_id,
+                                            "jugador_id": jugadores_map[apellido],
+                                            "set_numero": int(row['set_numero']),
+                                            "tipo_accion": row['tipo_accion'],
+                                            "marca": row['marca'],
+                                            "zona_jugador": row['zona_jugador'] if pd.notna(row['zona_jugador']) else None,
+                                            "zona_colocador": row['zona_colocador'] if pd.notna(row['zona_colocador']) else None,
+                                            "puntos_local": int(row['puntos_local']) if pd.notna(row['puntos_local']) else None,
+                                            "puntos_visitante": int(row['puntos_visitante']) if pd.notna(row['puntos_visitante']) else None
+                                        })
+                                    
+                                    # Insert batch (mucho más rápido)
+                                    if acciones_batch:
                                         conn.execute(text("""
                                             INSERT INTO acciones_new (
                                                 partido_id, jugador_id, set_numero, tipo_accion, marca,
@@ -4759,17 +4777,7 @@ def pagina_admin():
                                                 :partido_id, :jugador_id, :set_numero, :tipo_accion, :marca,
                                                 :zona_jugador, :zona_colocador, :puntos_local, :puntos_visitante
                                             )
-                                        """), {
-                                            "partido_id": partido_id,
-                                            "jugador_id": jugador_id,
-                                            "set_numero": int(row['set_numero']),
-                                            "tipo_accion": row['tipo_accion'],
-                                            "marca": row['marca'],
-                                            "zona_jugador": row['zona_jugador'] if pd.notna(row['zona_jugador']) else None,
-                                            "zona_colocador": row['zona_colocador'] if pd.notna(row['zona_colocador']) else None,
-                                            "puntos_local": int(row['puntos_local']) if pd.notna(row['puntos_local']) else None,
-                                            "puntos_visitante": int(row['puntos_visitante']) if pd.notna(row['puntos_visitante']) else None
-                                        })
+                                        """), acciones_batch)
                                 
                                 partidos_importados += 1
                                 
