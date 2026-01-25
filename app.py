@@ -1118,7 +1118,7 @@ def obtener_estadisticas_por_set(partido_ids):
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
             SELECT 
-                numero_set,
+                set_numero as numero_set,
                 tipo_accion,
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos,
@@ -1127,9 +1127,9 @@ def obtener_estadisticas_por_set(partido_ids):
                 COUNT(*) FILTER (WHERE marca = '/') as errores_forzados
             FROM acciones_new
             WHERE partido_id IN ({ids_str})
-            AND numero_set IS NOT NULL
-            GROUP BY numero_set, tipo_accion
-            ORDER BY numero_set, tipo_accion
+            AND set_numero IS NOT NULL
+            GROUP BY set_numero, tipo_accion
+            ORDER BY set_numero, tipo_accion
         """), conn)
         
         if not df.empty:
@@ -1148,14 +1148,14 @@ def obtener_puntos_por_set(partido_ids):
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
             SELECT 
-                numero_set,
+                set_numero as numero_set,
                 MAX(puntos_local) as puntos_local,
                 MAX(puntos_visitante) as puntos_visitante
             FROM acciones_new
             WHERE partido_id IN ({ids_str})
-            AND numero_set IS NOT NULL
-            GROUP BY numero_set
-            ORDER BY numero_set
+            AND set_numero IS NOT NULL
+            GROUP BY set_numero
+            ORDER BY set_numero
         """), conn)
         
         return df
