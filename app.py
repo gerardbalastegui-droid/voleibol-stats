@@ -2755,6 +2755,166 @@ def pagina_partido():
             for idx, insight in enumerate(insights):
                 with col1 if idx % 2 == 0 else col2:
                     st.info(insight)
+            
+            # === MOMENTOS CRÍTICOS ===
+            st.markdown("---")
+            st.markdown("##### 🎯 Moments Crítics")
+            
+            _, momentos = obtener_momentos_criticos(partido_ids)
+            
+            if momentos:
+                # Comparativa visual
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🚀 Inici de Set</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(0-5 punts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'inicio_set' in momentos:
+                        datos = momentos['inicio_set']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
+                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                with col2:
+                    st.markdown(f"""
+                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">⚔️ Punts Ajustats</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(diferència ≤2, +18 pts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'ajustados' in momentos:
+                        datos = momentos['ajustados']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
+                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                with col3:
+                    st.markdown(f"""
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🏁 Final de Set</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(+20 punts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'final_set' in momentos:
+                        datos = momentos['final_set']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
+                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                # Gráfico comparativo
+                if 'general' in momentos:
+                    st.markdown("---")
+                    st.markdown("##### 📊 Comparativa amb Rendiment General")
+                    
+                    # Selector de métrica
+                    metrica_seleccionada = st.selectbox(
+                        "Selecciona mètrica:",
+                        ["Atac", "Recepció", "Saque", "Bloqueig"],
+                        key="metrica_momentos_criticos"
+                    )
+                    
+                    metrica_map = {
+                        "Atac": "eficacia_ataque",
+                        "Recepció": "eficacia_recepcion",
+                        "Saque": "eficacia_saque",
+                        "Bloqueig": "eficacia_bloqueo"
+                    }
+                    
+                    metrica_key = metrica_map[metrica_seleccionada]
+                    
+                    categorias = ['Inici Set', 'Punts Ajustats', 'Final Set']
+                    efic_vals = [
+                        momentos.get('inicio_set', {}).get(metrica_key, 0),
+                        momentos.get('ajustados', {}).get(metrica_key, 0),
+                        momentos.get('final_set', {}).get(metrica_key, 0)
+                    ]
+                    efic_general = momentos['general'].get(metrica_key, 0)
+                    
+                    fig_momentos_criticos_comparativa = go.Figure()
+                    
+                    fig_momentos_criticos_comparativa.add_trace(go.Bar(
+                        x=categorias,
+                        y=efic_vals,
+                        name='Moment Crític',
+                        marker_color=[COLOR_VERDE if v >= efic_general else COLOR_ROJO for v in efic_vals],
+                        text=[f"{v}%" for v in efic_vals],
+                        textposition='outside'
+                    ))
+                    
+                    fig_momentos_criticos_comparativa.add_hline(
+                        y=efic_general, 
+                        line_dash="dash", 
+                        line_color=COLOR_NEGRO,
+                        annotation_text=f"Mitjana general: {efic_general}%"
+                    )
+                    
+                    fig_momentos_criticos_comparativa.update_layout(
+                        title=f"Eficàcia de {metrica_seleccionada} en Moments Crítics vs General",
+                        yaxis_title="Eficàcia (%)",
+                        height=350,
+                        yaxis=dict(range=[0, max(efic_vals + [efic_general]) + 15 if max(efic_vals + [efic_general]) > 0 else 100])
+                    )
+                    
+                    st.plotly_chart(fig_momentos_criticos_comparativa, use_container_width=True, config={'staticPlot': True})
+                    
+                    # Insights de momentos críticos
+                    st.markdown("##### 💡 Conclusions")
+                    
+                    insights_criticos = []
+                    
+                    # Analizar todas las métricas
+                    metricas_analizar = [
+                        ('eficacia_ataque', 'atac'),
+                        ('eficacia_recepcion', 'recepció'),
+                        ('eficacia_saque', 'saque'),
+                        ('eficacia_bloqueo', 'bloqueig')
+                    ]
+                    
+                    for metrica, nombre in metricas_analizar:
+                        # Puntos ajustados
+                        if 'ajustados' in momentos and 'general' in momentos:
+                            diff = momentos['ajustados'].get(metrica, 0) - momentos['general'].get(metrica, 0)
+                            if diff > 10:
+                                insights_criticos.append(f"✅ **{nombre.capitalize()} excel·lent en pressió!** +{diff:.1f}%")
+                            elif diff < -10:
+                                insights_criticos.append(f"⚠️ **{nombre.capitalize()} a millorar en pressió:** {diff:.1f}%")
+                        
+                        # Final de set
+                        if 'final_set' in momentos and 'general' in momentos:
+                            diff = momentos['final_set'].get(metrica, 0) - momentos['general'].get(metrica, 0)
+                            if diff > 10:
+                                insights_criticos.append(f"🏆 **{nombre.capitalize()} molt bo al final!** +{diff:.1f}%")
+                            elif diff < -10:
+                                insights_criticos.append(f"💪 **{nombre.capitalize()} baixa al final:** {diff:.1f}%")
+                    
+                    if insights_criticos:
+                        col1, col2 = st.columns(2)
+                        for idx, insight in enumerate(insights_criticos):
+                            with col1 if idx % 2 == 0 else col2:
+                                st.info(insight)
+                    else:
+                        st.info("➡️ Rendiment constant en tots els moments del partit")
+            else:
+                st.info("No hi ha dades suficients de punts per analitzar moments crítics")
     
     # === RANKINGS ===
     st.markdown("---")
@@ -2790,166 +2950,6 @@ def pagina_partido():
                     <small>{posicion_str} - {row['acciones']} accions</small>
                 </div>
                 """, unsafe_allow_html=True)
-
-# === MOMENTOS CRÍTICOS ===
-    st.markdown("---")
-    st.markdown("##### 🎯 Moments Crítics")
-    
-    _, momentos = obtener_momentos_criticos(partido_ids)
-    
-    if momentos:
-        # Comparativa visual
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown(f"""
-            <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
-                <h4 style="margin: 0;">🚀 Inici de Set</h4>
-                <p style="font-size: 0.8rem; color: #666;">(0-5 punts)</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if 'inicio_set' in momentos:
-                datos = momentos['inicio_set']
-                st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
-                st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
-            else:
-                st.info("Sense dades")
-        
-        with col2:
-            st.markdown(f"""
-            <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
-                <h4 style="margin: 0;">⚔️ Punts Ajustats</h4>
-                <p style="font-size: 0.8rem; color: #666;">(diferència ≤2, +18 pts)</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if 'ajustados' in momentos:
-                datos = momentos['ajustados']
-                st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
-                st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
-            else:
-                st.info("Sense dades")
-        
-        with col3:
-            st.markdown(f"""
-            <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
-                <h4 style="margin: 0;">🏁 Final de Set</h4>
-                <p style="font-size: 0.8rem; color: #666;">(+20 punts)</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if 'final_set' in momentos:
-                datos = momentos['final_set']
-                st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
-                st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
-            else:
-                st.info("Sense dades")
-        
-        # Gráfico comparativo
-        if 'general' in momentos:
-            st.markdown("---")
-            st.markdown("##### 📊 Comparativa amb Rendiment General")
-            
-            # Selector de métrica
-            metrica_seleccionada = st.selectbox(
-                "Selecciona mètrica:",
-                ["Atac", "Recepció", "Saque", "Bloqueig"],
-                key="metrica_momentos_criticos"
-            )
-            
-            metrica_map = {
-                "Atac": "eficacia_ataque",
-                "Recepció": "eficacia_recepcion",
-                "Saque": "eficacia_saque",
-                "Bloqueig": "eficacia_bloqueo"
-            }
-            
-            metrica_key = metrica_map[metrica_seleccionada]
-            
-            categorias = ['Inici Set', 'Punts Ajustats', 'Final Set']
-            efic_vals = [
-                momentos.get('inicio_set', {}).get(metrica_key, 0),
-                momentos.get('ajustados', {}).get(metrica_key, 0),
-                momentos.get('final_set', {}).get(metrica_key, 0)
-            ]
-            efic_general = momentos['general'].get(metrica_key, 0)
-            
-            fig_momentos_criticos_comparativa = go.Figure()
-            
-            fig_momentos_criticos_comparativa.add_trace(go.Bar(
-                x=categorias,
-                y=efic_vals,
-                name='Moment Crític',
-                marker_color=[COLOR_VERDE if v >= efic_general else COLOR_ROJO for v in efic_vals],
-                text=[f"{v}%" for v in efic_vals],
-                textposition='outside'
-            ))
-            
-            fig_momentos_criticos_comparativa.add_hline(
-                y=efic_general, 
-                line_dash="dash", 
-                line_color=COLOR_NEGRO,
-                annotation_text=f"Mitjana general: {efic_general}%"
-            )
-            
-            fig_momentos_criticos_comparativa.update_layout(
-                title=f"Eficàcia de {metrica_seleccionada} en Moments Crítics vs General",
-                yaxis_title="Eficàcia (%)",
-                height=350,
-                yaxis=dict(range=[0, max(efic_vals + [efic_general]) + 15 if max(efic_vals + [efic_general]) > 0 else 100])
-            )
-            
-            st.plotly_chart(fig_momentos_criticos_comparativa, use_container_width=True, config={'staticPlot': True})
-            
-            # Insights de momentos críticos
-            st.markdown("##### 💡 Conclusions")
-            
-            insights_criticos = []
-            
-            # Analizar todas las métricas
-            metricas_analizar = [
-                ('eficacia_ataque', 'atac'),
-                ('eficacia_recepcion', 'recepció'),
-                ('eficacia_saque', 'saque'),
-                ('eficacia_bloqueo', 'bloqueig')
-            ]
-            
-            for metrica, nombre in metricas_analizar:
-                # Puntos ajustados
-                if 'ajustados' in momentos and 'general' in momentos:
-                    diff = momentos['ajustados'].get(metrica, 0) - momentos['general'].get(metrica, 0)
-                    if diff > 10:
-                        insights_criticos.append(f"✅ **{nombre.capitalize()} excel·lent en pressió!** +{diff:.1f}%")
-                    elif diff < -10:
-                        insights_criticos.append(f"⚠️ **{nombre.capitalize()} a millorar en pressió:** {diff:.1f}%")
-                
-                # Final de set
-                if 'final_set' in momentos and 'general' in momentos:
-                    diff = momentos['final_set'].get(metrica, 0) - momentos['general'].get(metrica, 0)
-                    if diff > 10:
-                        insights_criticos.append(f"🏆 **{nombre.capitalize()} molt bo al final!** +{diff:.1f}%")
-                    elif diff < -10:
-                        insights_criticos.append(f"💪 **{nombre.capitalize()} baixa al final:** {diff:.1f}%")
-            
-            if insights_criticos:
-                col1, col2 = st.columns(2)
-                for idx, insight in enumerate(insights_criticos):
-                    with col1 if idx % 2 == 0 else col2:
-                        st.info(insight)
-            else:
-                st.info("➡️ Rendiment constant en tots els moments del partit")
-    else:
-        st.info("No hi ha dades suficients de punts per analitzar moments crítics")
         
 def pagina_jugador():
     """Página de análisis de jugador"""
