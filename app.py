@@ -2870,9 +2870,9 @@ def pagina_partido():
                     ]
                     efic_general = momentos['general']['eficacia_ataque']
                     
-                    fig = go.Figure()
+                    fig_criticos = go.Figure()
                     
-                    fig.add_trace(go.Bar(
+                    fig_criticos.add_trace(go.Bar(
                         x=categorias,
                         y=efic_ataque_vals,
                         name='Moment Crític',
@@ -2881,21 +2881,21 @@ def pagina_partido():
                         textposition='outside'
                     ))
                     
-                    fig.add_hline(
+                    fig_criticos.add_hline(
                         y=efic_general, 
                         line_dash="dash", 
                         line_color=COLOR_NEGRO,
                         annotation_text=f"Mitjana general: {efic_general}%"
                     )
                     
-                    fig.update_layout(
+                    fig_criticos.update_layout(
                         title="Eficàcia d'Atac en Moments Crítics vs General",
                         yaxis_title="Eficàcia (%)",
                         height=350,
                         yaxis=dict(range=[0, max(efic_ataque_vals + [efic_general]) + 15])
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+                    st.plotly_chart(fig_criticos, use_container_width=True, config={'staticPlot': True})
                     
                     # Insights de momentos críticos
                     st.markdown("##### 💡 Conclusions")
