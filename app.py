@@ -2895,7 +2895,7 @@ def pagina_partido():
                         yaxis=dict(range=[0, max(efic_ataque_vals + [efic_general]) + 15])
                     )
                     
-                    st.plotly_chart(fig_criticos, use_container_width=True, config={'staticPlot': True}, key="chart_momentos_criticos")
+                    st.plotly_chart(fig_criticos, use_container_width=True, config={'staticPlot': True}, key=f"chart_momentos_criticos_{partido_ids[0] if partido_ids else 'all'}")
                     
                     # Insights de momentos críticos
                     st.markdown("##### 💡 Conclusions")
