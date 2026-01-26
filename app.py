@@ -73,6 +73,9 @@ def get_engine():
     # Usar secrets de Streamlit Cloud si existen
     if "database" in st.secrets:
         return create_engine(st.secrets["database"]["url"])
+    # Usar variable de entorno (Railway, Render, etc.)
+    elif os.environ.get("DATABASE_URL"):
+        return create_engine(os.environ.get("DATABASE_URL"))
     else:
         # Fallback para desarrollo local
         return create_engine(
