@@ -595,13 +595,41 @@ def obtener_distribucion_colocador(partido_ids):
                 UPPER(zona_jugador) AS zona,
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
-                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos
             FROM acciones_new
             WHERE partido_id IN ({ids_str})
             AND tipo_accion = 'atacar'
             AND zona_jugador IS NOT NULL
             GROUP BY zona_jugador
             ORDER BY colocaciones DESC
+        """), conn)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_distribucion_por_rotacion(partido_ids):
+    """Obtiene distribución de colocaciones por zona y rotación"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                zona_colocador as rotacion,
+                UPPER(zona_jugador) AS zona,
+                COUNT(*) as colocaciones,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND tipo_accion = 'atacar'
+            AND zona_jugador IS NOT NULL
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_colocador, zona_jugador
+            ORDER BY zona_colocador, colocaciones DESC
         """), conn)
         
         return df
@@ -1717,7 +1745,8 @@ def crear_grafico_distribucion_colocador(df_dist):
         datos_zona[zona] = {
             'colocaciones': row['colocaciones'],
             'porcentaje': row['porcentaje'],
-            'eficacia': row['eficacia']
+            'eficacia': row['eficacia'],
+            'puntos': row['puntos'] if 'puntos' in row else 0
         }
     
     # Orden del campo: P4 P3 P2 (arriba), P5 P6 P1 (abajo)
@@ -1739,10 +1768,12 @@ def crear_grafico_distribucion_colocador(df_dist):
                 pct = datos_zona[zona]['porcentaje']
                 efic = datos_zona[zona]['eficacia']
                 col_count = datos_zona[zona]['colocaciones']
+                puntos = datos_zona[zona]['puntos']
             else:
                 pct = 0
                 efic = 0
                 col_count = 0
+                puntos = 0
             
             # Añadir rectángulo de zona - FONDO BLANCO
             fig.add_shape(
@@ -1755,7 +1786,7 @@ def crear_grafico_distribucion_colocador(df_dist):
             
             # Texto de la zona
             fig.add_annotation(
-                x=x_pos, y=y_pos + 0.28,
+                x=x_pos, y=y_pos + 0.32,
                 text=f"<b>{zona}</b>",
                 showarrow=False,
                 font=dict(size=14, color=COLOR_NEGRO)
@@ -1763,16 +1794,16 @@ def crear_grafico_distribucion_colocador(df_dist):
             
             # Porcentaje grande
             fig.add_annotation(
-                x=x_pos, y=y_pos,
+                x=x_pos, y=y_pos + 0.05,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
                 font=dict(size=22, color=COLOR_ROJO)
             )
             
-            # Eficacia pequeña
+            # Eficacia y puntos pequeños
             fig.add_annotation(
-                x=x_pos, y=y_pos - 0.28,
-                text=f"Efic: {efic}%",
+                x=x_pos, y=y_pos - 0.25,
+                text=f"Efic: {efic}% | # {int(puntos)}",
                 showarrow=False,
                 font=dict(size=10, color=COLOR_NEGRO)
             )
@@ -1797,6 +1828,100 @@ def crear_grafico_distribucion_colocador(df_dist):
         xaxis=dict(visible=False, range=[-1, 4]),
         yaxis=dict(visible=False, range=[-0.8, 2.5], scaleanchor="x"),
         height=450,
+        showlegend=False,
+        plot_bgcolor='white'
+    )
+    
+    return fig
+
+def crear_mini_grafico_rotacion(df_rotacion, rotacion):
+    """Crea mini visualización de distribución para una rotación específica"""
+    
+    # Crear diccionario de datos por zona
+    datos_zona = {}
+    total_ataques = df_rotacion['colocaciones'].sum() if not df_rotacion.empty else 0
+    
+    for _, row in df_rotacion.iterrows():
+        zona = row['zona'].upper() if row['zona'] else 'N/A'
+        pct = round((row['colocaciones'] / total_ataques * 100), 1) if total_ataques > 0 else 0
+        datos_zona[zona] = {
+            'colocaciones': row['colocaciones'],
+            'porcentaje': pct,
+            'eficacia': row['eficacia'],
+            'puntos': row['puntos'] if 'puntos' in row else 0
+        }
+    
+    # Orden del campo: P4 P3 P2 (arriba), P5 P6 P1 (abajo)
+    zonas_campo = [
+        ['P4', 'P3', 'P2'],
+        ['P5', 'P6', 'P1']
+    ]
+    
+    fig = go.Figure()
+    
+    # Crear la cuadrícula del campo
+    for fila_idx, fila in enumerate(zonas_campo):
+        for col_idx, zona in enumerate(fila):
+            x_pos = col_idx * 1.2
+            y_pos = (1 - fila_idx) * 1.0
+            
+            # Obtener datos de la zona
+            if zona in datos_zona:
+                pct = datos_zona[zona]['porcentaje']
+                efic = datos_zona[zona]['eficacia']
+                puntos = datos_zona[zona]['puntos']
+            else:
+                pct = 0
+                efic = 0
+                puntos = 0
+            
+            # Color de fondo según porcentaje
+            if pct >= 30:
+                bg_color = "rgba(244, 67, 54, 0.3)"  # Rojo claro
+            elif pct >= 15:
+                bg_color = "rgba(255, 193, 7, 0.3)"  # Amarillo claro
+            else:
+                bg_color = COLOR_BLANCO
+            
+            # Añadir rectángulo de zona
+            fig.add_shape(
+                type="rect",
+                x0=x_pos - 0.5, y0=y_pos - 0.4,
+                x1=x_pos + 0.5, y1=y_pos + 0.4,
+                fillcolor=bg_color,
+                line=dict(color=COLOR_NEGRO, width=1),
+            )
+            
+            # Texto de la zona
+            fig.add_annotation(
+                x=x_pos, y=y_pos + 0.2,
+                text=f"<b>{zona}</b>",
+                showarrow=False,
+                font=dict(size=10, color=COLOR_NEGRO)
+            )
+            
+            # Porcentaje
+            fig.add_annotation(
+                x=x_pos, y=y_pos - 0.05,
+                text=f"<b>{pct}%</b>",
+                showarrow=False,
+                font=dict(size=14, color=COLOR_ROJO)
+            )
+            
+            # Puntos
+            fig.add_annotation(
+                x=x_pos, y=y_pos - 0.28,
+                text=f"# {int(puntos)}",
+                showarrow=False,
+                font=dict(size=9, color=COLOR_NEGRO)
+            )
+    
+    fig.update_layout(
+        title=f"Rotació {rotacion} ({total_ataques} atacs)",
+        xaxis=dict(visible=False, range=[-0.7, 3.1]),
+        yaxis=dict(visible=False, range=[-0.6, 1.6], scaleanchor="x"),
+        height=250,
+        margin=dict(l=10, r=10, t=40, b=10),
         showlegend=False,
         plot_bgcolor='white'
     )
@@ -2340,7 +2465,8 @@ def pagina_partido():
                     'zona': 'Zona',
                     'colocaciones': 'Col·locacions',
                     'porcentaje': '% Total',
-                    'eficacia': 'Eficàcia Atac (%)'
+                    'eficacia': 'Eficàcia Atac (%)',
+                    'puntos': 'Punts (#)'
                 })
                 st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
                 
@@ -2349,6 +2475,48 @@ def pagina_partido():
                 
                 if max_zona['porcentaje'] > 40:
                     st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
+                
+                # === DISTRIBUCIÓN POR ROTACIÓN ===
+                st.markdown("---")
+                st.markdown("##### 🔄 Distribució per Rotació")
+                
+                df_dist_rotacion = obtener_distribucion_por_rotacion(partido_ids)
+                
+                if not df_dist_rotacion.empty:
+                    # Obtener rotaciones únicas
+                    rotaciones = sorted(df_dist_rotacion['rotacion'].unique())
+                    
+                    # Crear 2 filas de 3 columnas
+                    for fila in range(0, len(rotaciones), 3):
+                        cols = st.columns(3)
+                        for col_idx, col in enumerate(cols):
+                            rot_idx = fila + col_idx
+                            if rot_idx < len(rotaciones):
+                                rotacion = rotaciones[rot_idx]
+                                df_rot = df_dist_rotacion[df_dist_rotacion['rotacion'] == rotacion]
+                                
+                                with col:
+                                    fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion)
+                                    st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+                    
+                    # Tabla resumen por rotación
+                    with st.expander("📋 Taula resum per rotació"):
+                        df_resumen_rot = df_dist_rotacion.groupby('rotacion').agg({
+                            'colocaciones': 'sum',
+                            'puntos': 'sum'
+                        }).reset_index()
+                        df_resumen_rot['eficacia'] = df_dist_rotacion.groupby('rotacion').apply(
+                            lambda x: round((x['puntos'].sum() / x['colocaciones'].sum() * 100), 1) if x['colocaciones'].sum() > 0 else 0
+                        ).values
+                        df_resumen_rot = df_resumen_rot.rename(columns={
+                            'rotacion': 'Rotació',
+                            'colocaciones': 'Atacs',
+                            'puntos': 'Punts (#)',
+                            'eficacia': 'Eficàcia (%)'
+                        })
+                        st.dataframe(df_resumen_rot, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hi ha dades de rotació disponibles")
             else:
                 st.info("No hi ha dades de distribució")
         
