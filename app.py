@@ -1324,6 +1324,118 @@ def obtener_sideout_por_partido(equipo_id, temporada_id, fase_id=None):
         
         return df
 
+@st.cache_data(ttl=60)
+def obtener_momentos_criticos(partido_ids):
+    """Obtiene estadísticas en momentos críticos del partido"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                set_numero,
+                puntos_local,
+                puntos_visitante,
+                tipo_accion,
+                marca,
+                ABS(puntos_local - puntos_visitante) as diferencia,
+                GREATEST(puntos_local, puntos_visitante) as punto_mayor
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND puntos_local IS NOT NULL
+            AND puntos_visitante IS NOT NULL
+        """), conn)
+        
+        if df.empty:
+            return pd.DataFrame(), {}
+        
+        # Definir momentos críticos
+        resultados = {}
+        
+        # 1. Puntos ajustados (diferencia <= 2 y al menos 18 puntos)
+        df_ajustados = df[(df['diferencia'] <= 2) & (df['punto_mayor'] >= 18)]
+        if not df_ajustados.empty:
+            acciones_ajustados = df_ajustados[df_ajustados['tipo_accion'].isin(['atacar', 'saque', 'bloqueo', 'recepción'])]
+            if not acciones_ajustados.empty:
+                efic_ataque_aj = acciones_ajustados[acciones_ajustados['tipo_accion'] == 'atacar']
+                efic_ataque = round((len(efic_ataque_aj[efic_ataque_aj['marca'].isin(['#', '+'])]) / len(efic_ataque_aj) * 100), 1) if len(efic_ataque_aj) > 0 else 0
+                
+                efic_rec_aj = acciones_ajustados[acciones_ajustados['tipo_accion'] == 'recepción']
+                efic_rec = round((len(efic_rec_aj[efic_rec_aj['marca'].isin(['#', '+'])]) / len(efic_rec_aj) * 100), 1) if len(efic_rec_aj) > 0 else 0
+                
+                puntos_directos = len(acciones_ajustados[acciones_ajustados['marca'] == '#'])
+                errores = len(acciones_ajustados[(acciones_ajustados['tipo_accion'].isin(['atacar', 'saque', 'recepción'])) & (acciones_ajustados['marca'] == '=')])
+                
+                resultados['ajustados'] = {
+                    'total_acciones': len(acciones_ajustados),
+                    'eficacia_ataque': efic_ataque,
+                    'eficacia_recepcion': efic_rec,
+                    'puntos_directos': puntos_directos,
+                    'errores': errores
+                }
+        
+        # 2. Final de set (>= 20 puntos el que más tiene)
+        df_final = df[df['punto_mayor'] >= 20]
+        if not df_final.empty:
+            acciones_final = df_final[df_final['tipo_accion'].isin(['atacar', 'saque', 'bloqueo', 'recepción'])]
+            if not acciones_final.empty:
+                efic_ataque_fin = acciones_final[acciones_final['tipo_accion'] == 'atacar']
+                efic_ataque = round((len(efic_ataque_fin[efic_ataque_fin['marca'].isin(['#', '+'])]) / len(efic_ataque_fin) * 100), 1) if len(efic_ataque_fin) > 0 else 0
+                
+                efic_rec_fin = acciones_final[acciones_final['tipo_accion'] == 'recepción']
+                efic_rec = round((len(efic_rec_fin[efic_rec_fin['marca'].isin(['#', '+'])]) / len(efic_rec_fin) * 100), 1) if len(efic_rec_fin) > 0 else 0
+                
+                puntos_directos = len(acciones_final[acciones_final['marca'] == '#'])
+                errores = len(acciones_final[(acciones_final['tipo_accion'].isin(['atacar', 'saque', 'recepción'])) & (acciones_final['marca'] == '=')])
+                
+                resultados['final_set'] = {
+                    'total_acciones': len(acciones_final),
+                    'eficacia_ataque': efic_ataque,
+                    'eficacia_recepcion': efic_rec,
+                    'puntos_directos': puntos_directos,
+                    'errores': errores
+                }
+        
+        # 3. Inicio de set (<= 5 puntos el que más tiene)
+        df_inicio = df[df['punto_mayor'] <= 5]
+        if not df_inicio.empty:
+            acciones_inicio = df_inicio[df_inicio['tipo_accion'].isin(['atacar', 'saque', 'bloqueo', 'recepción'])]
+            if not acciones_inicio.empty:
+                efic_ataque_ini = acciones_inicio[acciones_inicio['tipo_accion'] == 'atacar']
+                efic_ataque = round((len(efic_ataque_ini[efic_ataque_ini['marca'].isin(['#', '+'])]) / len(efic_ataque_ini) * 100), 1) if len(efic_ataque_ini) > 0 else 0
+                
+                efic_rec_ini = acciones_inicio[acciones_inicio['tipo_accion'] == 'recepción']
+                efic_rec = round((len(efic_rec_ini[efic_rec_ini['marca'].isin(['#', '+'])]) / len(efic_rec_ini) * 100), 1) if len(efic_rec_ini) > 0 else 0
+                
+                puntos_directos = len(acciones_inicio[acciones_inicio['marca'] == '#'])
+                errores = len(acciones_inicio[(acciones_inicio['tipo_accion'].isin(['atacar', 'saque', 'recepción'])) & (acciones_inicio['marca'] == '=')])
+                
+                resultados['inicio_set'] = {
+                    'total_acciones': len(acciones_inicio),
+                    'eficacia_ataque': efic_ataque,
+                    'eficacia_recepcion': efic_rec,
+                    'puntos_directos': puntos_directos,
+                    'errores': errores
+                }
+        
+        # 4. Comparar con estadísticas generales
+        acciones_general = df[df['tipo_accion'].isin(['atacar', 'saque', 'bloqueo', 'recepción'])]
+        if not acciones_general.empty:
+            efic_ataque_gen = acciones_general[acciones_general['tipo_accion'] == 'atacar']
+            efic_ataque = round((len(efic_ataque_gen[efic_ataque_gen['marca'].isin(['#', '+'])]) / len(efic_ataque_gen) * 100), 1) if len(efic_ataque_gen) > 0 else 0
+            
+            efic_rec_gen = acciones_general[acciones_general['tipo_accion'] == 'recepción']
+            efic_rec = round((len(efic_rec_gen[efic_rec_gen['marca'].isin(['#', '+'])]) / len(efic_rec_gen) * 100), 1) if len(efic_rec_gen) > 0 else 0
+            
+            resultados['general'] = {
+                'eficacia_ataque': efic_ataque,
+                'eficacia_recepcion': efic_rec
+            }
+        
+        return df, resultados
+
 def obtener_rival(nombre_archivo):
     """Extrae el nombre del rival del nombre del archivo"""
     nombre = nombre_archivo.replace(".xlsx", "")
@@ -2686,6 +2798,143 @@ def pagina_partido():
                     <small>{posicion_str} - {row['acciones']} accions</small>
                 </div>
                 """, unsafe_allow_html=True)
+
+    # === MOMENTOS CRÍTICOS ===
+            st.markdown("---")
+            st.markdown("##### 🎯 Moments Crítics")
+            
+            _, momentos = obtener_momentos_criticos(partido_ids)
+            
+            if momentos:
+                # Comparativa visual
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🚀 Inici de Set</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(0-5 punts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'inicio_set' in momentos:
+                        datos = momentos['inicio_set']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                with col2:
+                    st.markdown(f"""
+                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">⚔️ Punts Ajustats</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(diferència ≤2, +18 pts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'ajustados' in momentos:
+                        datos = momentos['ajustados']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                with col3:
+                    st.markdown(f"""
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🏁 Final de Set</h4>
+                        <p style="font-size: 0.8rem; color: #666;">(+20 punts)</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if 'final_set' in momentos:
+                        datos = momentos['final_set']
+                        st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                        st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
+                    else:
+                        st.info("Sense dades")
+                
+                # Gráfico comparativo
+                if 'general' in momentos:
+                    st.markdown("---")
+                    st.markdown("##### 📊 Comparativa amb Rendiment General")
+                    
+                    categorias = ['Inici Set', 'Punts Ajustats', 'Final Set']
+                    efic_ataque_vals = [
+                        momentos.get('inicio_set', {}).get('eficacia_ataque', 0),
+                        momentos.get('ajustados', {}).get('eficacia_ataque', 0),
+                        momentos.get('final_set', {}).get('eficacia_ataque', 0)
+                    ]
+                    efic_general = momentos['general']['eficacia_ataque']
+                    
+                    fig = go.Figure()
+                    
+                    fig.add_trace(go.Bar(
+                        x=categorias,
+                        y=efic_ataque_vals,
+                        name='Moment Crític',
+                        marker_color=[COLOR_VERDE if v >= efic_general else COLOR_ROJO for v in efic_ataque_vals],
+                        text=[f"{v}%" for v in efic_ataque_vals],
+                        textposition='outside'
+                    ))
+                    
+                    fig.add_hline(
+                        y=efic_general, 
+                        line_dash="dash", 
+                        line_color=COLOR_NEGRO,
+                        annotation_text=f"Mitjana general: {efic_general}%"
+                    )
+                    
+                    fig.update_layout(
+                        title="Eficàcia d'Atac en Moments Crítics vs General",
+                        yaxis_title="Eficàcia (%)",
+                        height=350,
+                        yaxis=dict(range=[0, max(efic_ataque_vals + [efic_general]) + 15])
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+                    
+                    # Insights de momentos críticos
+                    st.markdown("##### 💡 Conclusions")
+                    
+                    insights_criticos = []
+                    
+                    # Analizar rendimiento en momentos ajustados
+                    if 'ajustados' in momentos and 'general' in momentos:
+                        diff = momentos['ajustados']['eficacia_ataque'] - momentos['general']['eficacia_ataque']
+                        if diff > 5:
+                            insights_criticos.append(f"✅ **Molt bé en pressió!** +{diff:.1f}% en punts ajustats")
+                        elif diff < -5:
+                            insights_criticos.append(f"⚠️ **A millorar en pressió:** {diff:.1f}% en punts ajustats")
+                        else:
+                            insights_criticos.append(f"➡️ **Rendiment estable** en punts ajustats")
+                    
+                    # Analizar final de set
+                    if 'final_set' in momentos and 'general' in momentos:
+                        diff = momentos['final_set']['eficacia_ataque'] - momentos['general']['eficacia_ataque']
+                        if diff > 5:
+                            insights_criticos.append(f"🏆 **Tanqueu bé els sets!** +{diff:.1f}% al final")
+                        elif diff < -5:
+                            insights_criticos.append(f"💪 **Costeu tancar sets:** {diff:.1f}% al final")
+                    
+                    # Analizar inicio de set
+                    if 'inicio_set' in momentos and 'general' in momentos:
+                        diff = momentos['inicio_set']['eficacia_ataque'] - momentos['general']['eficacia_ataque']
+                        if diff > 5:
+                            insights_criticos.append(f"🚀 **Bon començament de sets!** +{diff:.1f}%")
+                        elif diff < -5:
+                            insights_criticos.append(f"📈 **Arranqueu fluixos:** {diff:.1f}% a l'inici")
+                    
+                    if insights_criticos:
+                        for insight in insights_criticos:
+                            st.info(insight)
+                    else:
+                        st.info("➡️ Rendiment constant en tots els moments del partit")
+            else:
+                st.info("No hi ha dades suficients de punts per analitzar moments crítics")
     else:
         st.info("No hi ha dades de jugadors")
 
