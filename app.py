@@ -2895,7 +2895,8 @@ def pagina_partido():
                         yaxis=dict(range=[0, max(efic_ataque_vals + [efic_general]) + 15])
                     )
                     
-                    st.plotly_chart(fig_momentos_criticos_comparativa, use_container_width=True, config={'staticPlot': True})
+                    import time
+                    st.plotly_chart(fig_momentos_criticos_comparativa, use_container_width=True, config={'staticPlot': True}, key=f"mc_chart_{time.time()}")
                     
                     # Insights de momentos críticos
                     st.markdown("##### 💡 Conclusions")
