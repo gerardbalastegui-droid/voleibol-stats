@@ -218,6 +218,8 @@ def pagina_inicio_publica():
     if st.session_state.get('mostrar_login'):
         mostrar_login_inline()
 
+    return
+
 def pagina_equipos_publica():
     """Página de equipos para visitantes"""
     st.title("🏐 Equips")
