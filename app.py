@@ -5592,7 +5592,7 @@ def pagina_admin():
                     
                     with col1:
                         edit_nombre = st.text_input("Nom:", value=jug_info['nombre'] or "", key="edit_jug_nombre")
-                        edit_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=int(jug_info['dorsal']) if jug_info['dorsal'] else 0, key="edit_jug_dorsal")
+                        edit_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=int(jug_info['dorsal']) if pd.notna(jug_info['dorsal']) else 0, key="edit_jug_dorsal")
                     
                     with col2:
                         edit_apellido = st.text_input("Cognom:", value=jug_info['apellido'] or "", key="edit_jug_apellido")
