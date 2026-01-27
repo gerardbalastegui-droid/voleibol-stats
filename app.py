@@ -5591,24 +5591,24 @@ def pagina_admin():
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        edit_nombre = st.text_input("Nom:", value=jug_info['nombre'] or "", key="edit_jug_nombre")
-                        edit_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=int(jug_info['dorsal']) if pd.notna(jug_info['dorsal']) else 0, key="edit_jug_dorsal")
+                        edit_nombre = st.text_input("Nom:", value=jug_info['nombre'] or "", key=f"edit_jug_nombre_{jug_editar}")
+                        edit_dorsal = st.number_input("Dorsal:", min_value=0, max_value=99, value=int(jug_info['dorsal']) if pd.notna(jug_info['dorsal']) else 0, key=f"edit_jug_dorsal_{jug_editar}")
                     
                     with col2:
-                        edit_apellido = st.text_input("Cognom:", value=jug_info['apellido'] or "", key="edit_jug_apellido")
+                        edit_apellido = st.text_input("Cognom:", value=jug_info['apellido'] or "", key=f"edit_jug_apellido_{jug_editar}")
                         posiciones = [None, "Col·locador", "Oposat", "Central", "Receptor", "Líbero"]
                         pos_actual = jug_info['posicion'] if jug_info['posicion'] in posiciones else None
                         edit_posicion = st.selectbox(
                             "Posició:",
                             options=posiciones,
                             index=posiciones.index(pos_actual) if pos_actual else 0,
-                            key="edit_jug_posicion"
+                            key=f"edit_jug_posicion_{jug_editar}"
                         )
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        if st.button("💾 Guardar canvis", type="primary", key="btn_guardar_jug"):
+                        if st.button("💾 Guardar canvis", type="primary", key=f"btn_guardar_jug_{jug_editar}"):
                             try:
                                 with get_engine().begin() as conn:
                                     conn.execute(text("""
@@ -5631,7 +5631,7 @@ def pagina_admin():
                                 st.error(f"❌ Error: {str(e)}")
                     
                     with col2:
-                        if st.button("🚫 Desactivar jugador", type="secondary", key="btn_desactivar_jug"):
+                        if st.button("🚫 Desactivar jugador", type="secondary", key=f"btn_desactivar_jug_{jug_editar}"):
                             try:
                                 with get_engine().begin() as conn:
                                     conn.execute(text("UPDATE jugadores SET activo = false WHERE id = :id"), {"id": jug_editar})
