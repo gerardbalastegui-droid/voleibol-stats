@@ -66,9 +66,31 @@ def partido_ya_existe(engine, nombre_archivo):
         ).scalar()
         return resultado > 0
 
-def obtener_o_crear_jugador(conn, apellido, equipo_id):
-    """Obtiene o crea un jugador por apellido"""
-    # Buscar existente
+def obtener_o_crear_jugador(conn, apellido, equipo_id, dorsal=None):
+    """Obtiene o crea un jugador por apellido y dorsal"""
+    
+    # Si tenemos dorsal, buscar por apellido + dorsal
+    if dorsal is not None:
+        resultado = conn.execute(text("""
+            SELECT id FROM jugadores 
+            WHERE LOWER(apellido) = LOWER(:apellido) 
+            AND equipo_id = :equipo_id 
+            AND dorsal = :dorsal
+        """), {"apellido": apellido, "equipo_id": equipo_id, "dorsal": dorsal}).fetchone()
+        
+        if resultado:
+            return resultado[0]
+        
+        # Crear nuevo con dorsal
+        resultado = conn.execute(text("""
+            INSERT INTO jugadores (apellido, equipo_id, dorsal, activo)
+            VALUES (:apellido, :equipo_id, :dorsal, true)
+            RETURNING id
+        """), {"apellido": apellido, "equipo_id": equipo_id, "dorsal": dorsal})
+        
+        return resultado.fetchone()[0]
+    
+    # Sin dorsal, buscar solo por apellido (comportamiento anterior)
     resultado = conn.execute(text("""
         SELECT id FROM jugadores 
         WHERE LOWER(apellido) = LOWER(:apellido) AND equipo_id = :equipo_id
@@ -77,7 +99,7 @@ def obtener_o_crear_jugador(conn, apellido, equipo_id):
     if resultado:
         return resultado[0]
     
-    # Crear nuevo
+    # Crear nuevo sin dorsal
     resultado = conn.execute(text("""
         INSERT INTO jugadores (apellido, equipo_id, activo)
         VALUES (:apellido, :equipo_id, true)
@@ -367,7 +389,8 @@ def pagina_importar_partido(get_engine_func):
                         apellido = row['jugador_apellido'].strip()
                         
                         # Obtener o crear jugador
-                        jugador_id = obtener_o_crear_jugador(conn, apellido, st.session_state.equipo_id)
+                        dorsal = int(row['jugador_numero']) if pd.notna(row['jugador_numero']) else None
+                        jugador_id = obtener_o_crear_jugador(conn, apellido, st.session_state.equipo_id, dorsal)
                         
                         # Insertar acción
                         conn.execute(text("""
