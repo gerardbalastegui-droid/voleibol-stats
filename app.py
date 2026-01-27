@@ -5073,7 +5073,15 @@ def pagina_admin():
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🏆 Fases", "🏐 Equips", "📅 Temporades", "👥 Jugadors", "🏐 Partits", "👤 Usuaris"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "🏐 Equips",
+        "📅 Temporades", 
+        "🏆 Fases",
+        "👥 Jugadors",
+        "📊 Partits",
+        "👤 Usuaris",
+        "📋 Accessos"
+    ])
     
     # =================================
     # TAB 1: FASES
@@ -6006,6 +6014,41 @@ def pagina_admin():
                             
                         except Exception as e:
                             st.error(f"❌ Error: {str(e)}")
+
+    with tab7:
+        st.subheader("📋 Registre d'Accessos")
+        
+        with get_engine().connect() as conn:
+            accesos = pd.read_sql(text("""
+                SELECT 
+                    fecha,
+                    username,
+                    CASE WHEN exitoso THEN '✅ Èxit' ELSE '❌ Fallat' END as resultat
+                FROM registro_accesos
+                ORDER BY fecha DESC
+                LIMIT 100
+            """), conn)
+        
+        if not accesos.empty:
+            accesos['fecha'] = pd.to_datetime(accesos['fecha']).dt.strftime('%d/%m/%Y %H:%M')
+            accesos = accesos.rename(columns={
+                'fecha': 'Data',
+                'username': 'Usuari',
+                'resultat': 'Resultat'
+            })
+            st.dataframe(accesos, use_container_width=True, hide_index=True)
+            
+            # Resumen
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                total_exitosos = len(accesos[accesos['Resultat'] == '✅ Èxit'])
+                st.metric("Accessos exitosos", total_exitosos)
+            with col2:
+                total_fallidos = len(accesos[accesos['Resultat'] == '❌ Fallat'])
+                st.metric("Intents fallits", total_fallidos)
+        else:
+            st.info("No hi ha registres d'accés")
 
 # =============================================================================
 # SIDEBAR Y NAVEGACIÓN
