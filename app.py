@@ -6123,7 +6123,10 @@ def main():
     if pagina in paginas_publicas:
         # Acceso libre
         if pagina == "🏠 Inici":
-            pagina_inicio_publica() if not logged_in else pagina_inicio()
+            if not logged_in:
+                pagina_inicio_publica()
+            else:
+                pagina_inicio()
         elif pagina == "🏐 Equips":
             pagina_equipos_publica()
     
