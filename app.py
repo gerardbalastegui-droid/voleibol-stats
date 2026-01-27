@@ -5919,6 +5919,17 @@ def sidebar_contexto():
         options=opciones,
         key='navegacion'
     )
+
+    # Footer con marca personal
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("""
+    <div style="text-align: center; color: #888; font-size: 0.8rem; padding: 0.5rem;">
+        Desenvolupat per <b>Gerard Balastegui Mera</b><br>
+        <a href="https://instagram.com/gerardbalastegui" target="_blank" style="color: #E1306C; text-decoration: none;">
+            📸 @gerardbalastegui
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
     
     return pagina
 
