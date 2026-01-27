@@ -146,6 +146,162 @@ def logout():
         if key in st.session_state:
             del st.session_state[key]
 
+def mostrar_login_inline():
+    """Muestra formulario de login en la página actual"""
+    st.markdown("---")
+    st.subheader("🔐 Iniciar sessió")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        username = st.text_input("Usuari:", key="login_inline_user")
+        password = st.text_input("Contrasenya:", type="password", key="login_inline_pass")
+        
+        if st.button("🔐 Entrar", type="primary", use_container_width=True, key="login_inline_btn"):
+            if username and password:
+                usuario = verificar_login(username, password)
+                
+                if usuario:
+                    st.session_state.logged_in = True
+                    st.session_state.usuario = usuario
+                    st.session_state.es_admin = usuario['es_admin']
+                    
+                    if not usuario['es_admin'] and usuario['equipo_id']:
+                        st.session_state.equipo_id = usuario['equipo_id']
+                        equipos = cargar_equipos()
+                        equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                        if not equipo_info.empty:
+                            st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                    
+                    st.success(f"✅ Benvingut, {usuario['username']}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Usuari o contrasenya incorrectes")
+            else:
+                st.warning("⚠️ Introdueix usuari i contrasenya")
+
+def pagina_inicio_publica():
+    """Página de inicio para visitantes"""
+    st.title("🏐 Voleibol Stats")
+    st.markdown("### Benvingut!")
+    st.markdown("""
+    Aquesta aplicació permet consultar estadístiques de voleibol.
+    
+    **Com a visitant pots veure:**
+    - 🏐 Informació dels equips
+    - 👥 Jugadors de cada equip
+    - 📅 Resultats dels partits
+    
+    **Inicia sessió** per accedir a estadístiques avançades i anàlisis detallats.
+    """)
+    
+    st.markdown("---")
+    
+    # Mostrar resumen de equipos
+    st.subheader("🏐 Equips")
+    equipos = cargar_equipos()
+    
+    if not equipos.empty:
+        cols = st.columns(3)
+        for idx, (_, equipo) in enumerate(equipos.iterrows()):
+            with cols[idx % 3]:
+                st.markdown(f"""
+                <div style="background: #f5f5f5; padding: 1rem; border-radius: 10px; text-align: center; margin: 0.5rem 0;">
+                    <h4 style="margin: 0;">{equipo['nombre_completo']}</h4>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Mostrar login si se ha pulsado el botón
+    if st.session_state.get('mostrar_login'):
+        mostrar_login_inline()
+
+def pagina_equipos_publica():
+    """Página de equipos para visitantes"""
+    st.title("🏐 Equips")
+    
+    equipos = cargar_equipos()
+    
+    if equipos.empty:
+        st.info("No hi ha equips disponibles")
+        return
+    
+    # Selector de equipo
+    equipo_sel = st.selectbox(
+        "Selecciona un equip:",
+        options=equipos['id'].tolist(),
+        format_func=lambda x: equipos[equipos['id'] == x]['nombre_completo'].iloc[0]
+    )
+    
+    if equipo_sel:
+        equipo_info = equipos[equipos['id'] == equipo_sel].iloc[0]
+        
+        st.markdown(f"## {equipo_info['nombre_completo']}")
+        
+        st.markdown("---")
+        
+        # Jugadores del equipo
+        st.subheader("👥 Jugadors")
+        
+        with get_engine().connect() as conn:
+            jugadores = pd.read_sql(text("""
+                SELECT apellido, posicion, dorsal
+                FROM jugadores
+                WHERE equipo_id = :equipo_id AND activo = true
+                ORDER BY apellido
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not jugadores.empty:
+            cols = st.columns(4)
+            for idx, (_, jug) in enumerate(jugadores.iterrows()):
+                with cols[idx % 4]:
+                    dorsal = f"#{jug['dorsal']}" if jug['dorsal'] else ""
+                    posicion = f"({jug['posicion']})" if jug['posicion'] else ""
+                    st.markdown(f"""
+                    <div style="background: #f5f5f5; padding: 0.5rem; border-radius: 5px; text-align: center; margin: 0.25rem 0;">
+                        <strong>{jug['apellido']}</strong> {dorsal}<br>
+                        <small>{posicion}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No hi ha jugadors registrats")
+        
+        st.markdown("---")
+        
+        # Partidos del equipo (solo resultados básicos)
+        st.subheader("📅 Partits")
+        
+        with get_engine().connect() as conn:
+            partidos = pd.read_sql(text("""
+                SELECT rival, local, fecha, resultado
+                FROM partidos_new
+                WHERE equipo_id = :equipo_id
+                ORDER BY fecha DESC
+                LIMIT 10
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not partidos.empty:
+            for _, partido in partidos.iterrows():
+                tipo = "🏠" if partido['local'] else "✈️"
+                fecha = partido['fecha'].strftime("%d/%m/%Y") if partido['fecha'] else "-"
+                resultado = partido['resultado'] or "-"
+                
+                # Color según resultado
+                if resultado and resultado != "-":
+                    sets = resultado.split("-")
+                    if len(sets) == 2 and int(sets[0]) > int(sets[1]):
+                        color = "#4CAF50"  # Verde - victoria
+                    else:
+                        color = "#F44336"  # Rojo - derrota
+                else:
+                    color = "#888"
+                
+                st.markdown(f"""
+                <div style="background: #f5f5f5; padding: 0.5rem 1rem; border-radius: 5px; margin: 0.25rem 0; border-left: 4px solid {color};">
+                    {tipo} <strong>vs {partido['rival']}</strong> · {fecha} · <strong>{resultado}</strong>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No hi ha partits registrats")
 
 # =============================================================================
 # FUNCIONES DE DATOS
@@ -5812,19 +5968,22 @@ def pagina_admin():
 # =============================================================================
 
 def sidebar_contexto():
-    """Sidebar con selección de contexto"""
-    st.sidebar.markdown(f"""
-    <div style="text-align: center; padding: 1rem;">
-        <h2 style="color: {COLOR_ROJO};">🏐 Volei Stats</h2>
-    </div>
-    """, unsafe_allow_html=True)
+    """Sidebar con contexto y navegación"""
     
-    # Mostrar usuario y botón logout
-    if st.session_state.get('logged_in'):
+    logged_in = st.session_state.get('logged_in', False)
+    es_admin = st.session_state.get('es_admin', False)
+    
+    # Mostrar estado de sesión
+    if logged_in:
         usuario = st.session_state.get('usuario', {})
         st.sidebar.markdown(f"👤 **{usuario.get('username', '')}**")
         if st.sidebar.button("🚪 Tancar sessió", use_container_width=True):
             logout()
+            st.rerun()
+    else:
+        st.sidebar.markdown("👤 **Visitant**")
+        if st.sidebar.button("🔐 Iniciar sessió", use_container_width=True):
+            st.session_state.mostrar_login = True
             st.rerun()
     
     st.sidebar.markdown("---")
@@ -5904,20 +6063,18 @@ def sidebar_contexto():
     
     st.sidebar.markdown("---")
     
-    # Navegación
-    st.sidebar.subheader("📍 Navegació")
-    
-    es_admin = st.session_state.get('es_admin', False)
-    
+    # Navegación según rol
     if es_admin:
-        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar", "⚙️ Admin"]
+        opciones = ["🏠 Inici", "🏐 Equips", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar", "⚙️ Admin"]
+    elif logged_in:
+        opciones = ["🏠 Inici", "🏐 Equips", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
     else:
-        opciones = ["🏠 Inici", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
+        opciones = ["🏠 Inici", "🏐 Equips"]
     
     pagina = st.sidebar.radio(
-        "Selecciona secció:",
-        options=opciones,
-        key='navegacion'
+        "Navegació",
+        opciones,
+        label_visibility="collapsed"
     )
 
     # Footer con marca personal
@@ -5940,29 +6097,54 @@ def sidebar_contexto():
 
 def main():
     """Función principal"""
-    # Verificar si está logueado
-    if not st.session_state.get('logged_in'):
-        pagina_login()
-        return
     
-    # Sidebar y navegación
+    # Sidebar y navegación (ahora siempre visible)
     pagina = sidebar_contexto()
     
+    # Determinar nivel de acceso
+    logged_in = st.session_state.get('logged_in', False)
+    es_admin = st.session_state.get('es_admin', False)
+    
+    # Páginas públicas (sin login)
+    paginas_publicas = ["🏠 Inici", "🏐 Equips"]
+    
+    # Páginas que requieren login
+    paginas_privadas = ["📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
+    
+    # Páginas solo admin
+    paginas_admin = ["📤 Importar", "⚙️ Admin"]
+    
     # Routing
-    if pagina == "🏠 Inici":
-        pagina_inicio()
-    elif pagina == "📊 Partit":
-        pagina_partido()
-    elif pagina == "👤 Jugador":
-        pagina_jugador()
-    elif pagina == "🎴 Fitxes":
-        pagina_fichas()
-    elif pagina == "📈 Comparativa":
-        pagina_comparativa()
-    elif pagina == "📤 Importar":
-        pagina_importar()
-    elif pagina == "⚙️ Admin":
-        pagina_admin()
+    if pagina in paginas_publicas:
+        # Acceso libre
+        if pagina == "🏠 Inici":
+            pagina_inicio_publica() if not logged_in else pagina_inicio()
+        elif pagina == "🏐 Equips":
+            pagina_equipos_publica()
+    
+    elif pagina in paginas_privadas:
+        if not logged_in:
+            st.warning("🔐 Has d'iniciar sessió per veure aquesta secció")
+            mostrar_login_inline()
+        else:
+            if pagina == "📊 Partit":
+                pagina_partido()
+            elif pagina == "👤 Jugador":
+                pagina_jugador()
+            elif pagina == "🎴 Fitxes":
+                pagina_fichas()
+            elif pagina == "📈 Comparativa":
+                pagina_comparativa()
+    
+    elif pagina in paginas_admin:
+        if not es_admin:
+            st.error("⛔ Necessites permisos d'administrador")
+        else:
+            if pagina == "📤 Importar":
+                from importar_partido_streamlit import pagina_importar_partido
+                pagina_importar_partido(get_engine)
+            elif pagina == "⚙️ Admin":
+                pagina_admin()
 
 if __name__ == "__main__":
     main()
