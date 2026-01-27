@@ -3256,7 +3256,7 @@ def pagina_partido():
             # === ESTADÍSTICAS GENERALES DEL SET ===
             st.markdown("##### 📊 Estadístiques del Set")
             
-            df_set = df_sets[df_sets['numero_set'] == set_seleccionado]
+            df_set = df_sets[df_sets['numero_set'] == int(set_seleccionado)]
             
             # Calcular métricas del set
             ataque = df_set[df_set['tipo_accion'] == 'atacar']
@@ -3284,7 +3284,7 @@ def pagina_partido():
             st.markdown("---")
             st.markdown("##### ⚔️ Side-out i Contraatac")
             
-            df_sideout = obtener_sideout_por_set(partido_ids, set_seleccionado)
+            df_sideout = obtener_sideout_por_set(partido_ids, int(set_seleccionado))
             
             if not df_sideout.empty:
                 row = df_sideout.iloc[0]
@@ -3323,7 +3323,7 @@ def pagina_partido():
             st.markdown("---")
             st.markdown("##### 🎯 Distribució del Col·locador")
             
-            df_dist_set = obtener_distribucion_colocador_por_set(partido_ids, set_seleccionado)
+            df_dist_set = obtener_distribucion_colocador_por_set(partido_ids, int(set_seleccionado))
             
             if not df_dist_set.empty:
                 # Gráfico de distribución
@@ -3348,7 +3348,7 @@ def pagina_partido():
             st.markdown("---")
             st.markdown("##### 🔄 Distribució per Rotació")
             
-            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, set_seleccionado)
+            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, int(set_seleccionado))
             
             if not df_rot_set.empty:
                 rotaciones = sorted(df_rot_set['rotacion'].unique())
@@ -3372,7 +3372,7 @@ def pagina_partido():
             st.markdown("---")
             st.markdown("##### 👥 Detall per Jugador")
             
-            df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, set_seleccionado)
+            df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, int(set_seleccionado))
             
             if not df_jugadores_set.empty:
                 # Pivotar para mostrar por jugador
