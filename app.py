@@ -6093,7 +6093,7 @@ def pagina_admin():
                             VALUES (:username, :password, :equipo_id, :es_admin, TRUE)
                         """), {
                             "username": nuevo_username,
-                            "password": encriptar_pasword(nuevo_password),
+                            "password": encriptar_password(nuevo_password),
                             "equipo_id": nuevo_equipo,
                             "es_admin": nuevo_es_admin
                         })
