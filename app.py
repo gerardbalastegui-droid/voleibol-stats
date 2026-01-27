@@ -29,7 +29,7 @@ COLOR_NARANJA = "#FF9800"
 
 # Configuración de página
 st.set_page_config(
-    page_title="🏐 Voleibol Stats",
+    page_title="Voleibol Stats",
     page_icon="🏐",
     layout="wide",
     initial_sidebar_state="expanded"
