@@ -132,6 +132,22 @@ def verificar_login(username, password):
         
         return None
 
+def registrar_acceso(usuario_id, username, exitoso):
+    """Registra un intento de acceso en la base de datos"""
+    try:
+        with get_engine().begin() as conn:
+            conn.execute(text("""
+                INSERT INTO registro_accesos (usuario_id, username, exitoso)
+                VALUES (:usuario_id, :username, :exitoso)
+            """), {
+                "usuario_id": usuario_id,
+                "username": username,
+                "exitoso": exitoso
+            })
+    except Exception as e:
+        # No fallar si hay error en el registro
+        pass
+
 def pagina_login():
     """Página de login"""
     st.title("🏐 Voleibol Stats")
