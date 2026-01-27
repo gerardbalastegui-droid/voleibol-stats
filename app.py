@@ -3375,41 +3375,130 @@ def pagina_partido():
             df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, int(set_seleccionado))
             
             if not df_jugadores_set.empty:
-                # Pivotar para mostrar por jugador
+                # Pivotar datos para crear tabla como la de "Detall per Acció"
+                jugadores_unicos = df_jugadores_set['jugador'].unique()
                 acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
                 
-                jugadores_unicos = df_jugadores_set['jugador'].unique()
-                
-                data_tabla = []
+                data_rows = []
                 for jugador in jugadores_unicos:
-                    row_data = {'Jugador': jugador}
                     df_jug = df_jugadores_set[df_jugadores_set['jugador'] == jugador]
+                    
+                    row = {'Jugador': jugador}
                     
                     for accion in acciones:
                         df_acc = df_jug[df_jug['tipo_accion'] == accion]
-                        if not df_acc.empty:
-                            if accion == 'atacar':
-                                row_data['Atac'] = f"{df_acc['eficacia'].iloc[0]}% ({int(df_acc['puntos'].iloc[0])}#)"
-                            elif accion == 'recepción':
-                                row_data['Recep.'] = f"{df_acc['eficacia'].iloc[0]}%"
-                            elif accion == 'saque':
-                                row_data['Saque'] = f"{int(df_acc['puntos'].iloc[0])}# / {int(df_acc['errores'].iloc[0])}="
-                            elif accion == 'bloqueo':
-                                row_data['Bloc'] = f"{int(df_acc['puntos'].iloc[0])}#"
+                        
+                        if accion == 'atacar':
+                            prefix = 'Atac'
+                        elif accion == 'recepción':
+                            prefix = 'Recep'
+                        elif accion == 'saque':
+                            prefix = 'Saque'
                         else:
-                            if accion == 'atacar':
-                                row_data['Atac'] = "-"
-                            elif accion == 'recepción':
-                                row_data['Recep.'] = "-"
-                            elif accion == 'saque':
-                                row_data['Saque'] = "-"
-                            elif accion == 'bloqueo':
-                                row_data['Bloc'] = "-"
+                            prefix = 'Bloc'
+                        
+                        if not df_acc.empty:
+                            row[f'{prefix}_#'] = int(df_acc['puntos'].iloc[0])
+                            row[f'{prefix}_+'] = int(df_acc['positivos'].iloc[0])
+                            row[f'{prefix}_!'] = int(df_acc['neutros'].iloc[0])
+                            row[f'{prefix}_-'] = int(df_acc['negativos'].iloc[0])
+                            row[f'{prefix}_/'] = int(df_acc['errores_forzados'].iloc[0])
+                            row[f'{prefix}_='] = int(df_acc['errores'].iloc[0])
+                            row[f'{prefix}_Efc'] = df_acc['eficacia'].iloc[0]
+                            row[f'{prefix}_Efn'] = df_acc['eficiencia'].iloc[0]
+                        else:
+                            row[f'{prefix}_#'] = ''
+                            row[f'{prefix}_+'] = ''
+                            row[f'{prefix}_!'] = ''
+                            row[f'{prefix}_-'] = ''
+                            row[f'{prefix}_/'] = ''
+                            row[f'{prefix}_='] = ''
+                            row[f'{prefix}_Efc'] = ''
+                            row[f'{prefix}_Efn'] = ''
                     
-                    data_tabla.append(row_data)
+                    data_rows.append(row)
                 
-                df_tabla = pd.DataFrame(data_tabla)
-                st.dataframe(df_tabla, use_container_width=True, hide_index=True, height=400)
+                df_tabla = pd.DataFrame(data_rows)
+                
+                # Reordenar columnas
+                columnas_ordenadas = ['Jugador']
+                for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                    columnas_ordenadas.extend([f'{prefix}_#', f'{prefix}_+', f'{prefix}_!', f'{prefix}_-', f'{prefix}_/', f'{prefix}_=', f'{prefix}_Efc', f'{prefix}_Efn'])
+                
+                df_tabla = df_tabla[columnas_ordenadas]
+                
+                # Renombrar columnas para que se vean mejor
+                nuevas_columnas = {'Jugador': 'Jugador'}
+                for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                    nuevas_columnas[f'{prefix}_#'] = '#'
+                    nuevas_columnas[f'{prefix}_+'] = '+'
+                    nuevas_columnas[f'{prefix}_!'] = '!'
+                    nuevas_columnas[f'{prefix}_-'] = '-'
+                    nuevas_columnas[f'{prefix}_/'] = '/'
+                    nuevas_columnas[f'{prefix}_='] = '='
+                    nuevas_columnas[f'{prefix}_Efc'] = 'Efc'
+                    nuevas_columnas[f'{prefix}_Efn'] = 'Efn'
+                
+                # Crear tabla con headers multinivel usando HTML
+                st.markdown("""
+                <style>
+                .tabla-jugadores-set {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.85rem;
+                }
+                .tabla-jugadores-set th, .tabla-jugadores-set td {
+                    border: 1px solid #ddd;
+                    padding: 4px 8px;
+                    text-align: center;
+                }
+                .tabla-jugadores-set th {
+                    background-color: #f5f5f5;
+                }
+                .tabla-jugadores-set .header-accion {
+                    background-color: #D32F2F;
+                    color: white;
+                }
+                .tabla-jugadores-set .jugador-col {
+                    text-align: left;
+                    font-weight: bold;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Construir tabla HTML
+                html = '<table class="tabla-jugadores-set">'
+                
+                # Header de acciones
+                html += '<tr>'
+                html += '<th rowspan="2">Jugador</th>'
+                html += '<th colspan="8" class="header-accion">Atac</th>'
+                html += '<th colspan="8" class="header-accion">Recepció</th>'
+                html += '<th colspan="8" class="header-accion">Saque</th>'
+                html += '<th colspan="8" class="header-accion">Bloqueig</th>'
+                html += '</tr>'
+                
+                # Header de columnas
+                html += '<tr>'
+                for _ in range(4):
+                    html += '<th>#</th><th>+</th><th>!</th><th>-</th><th>/</th><th>=</th><th>Efc</th><th>Efn</th>'
+                html += '</tr>'
+                
+                # Filas de datos
+                for _, row in df_tabla.iterrows():
+                    html += '<tr>'
+                    html += f'<td class="jugador-col">{row["Jugador"]}</td>'
+                    
+                    for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                        for col in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
+                            val = row[f'{prefix}_{col}']
+                            html += f'<td>{val}</td>'
+                    
+                    html += '</tr>'
+                
+                html += '</table>'
+                
+                st.markdown(html, unsafe_allow_html=True)
             else:
                 st.info("No hi ha dades de jugadors per aquest set")
             
