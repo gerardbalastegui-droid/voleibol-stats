@@ -281,10 +281,186 @@ def pagina_equipos_publica():
         
         st.markdown(f"## {equipo_info['nombre_completo']}")
         
+        # === ESTADÍSTICAS GENERALES ===
         st.markdown("---")
+        st.subheader("📊 Estadístiques")
         
-        # Jugadores del equipo
-        st.subheader("👥 Jugadors")
+        with get_engine().connect() as conn:
+            # Obtener estadísticas de partidos
+            stats = conn.execute(text("""
+                SELECT 
+                    COUNT(*) as partidos,
+                    COUNT(*) FILTER (WHERE 
+                        (local = true AND SPLIT_PART(resultado, '-', 1)::int > SPLIT_PART(resultado, '-', 2)::int) OR
+                        (local = false AND SPLIT_PART(resultado, '-', 2)::int > SPLIT_PART(resultado, '-', 1)::int)
+                    ) as victorias,
+                    SUM(SPLIT_PART(resultado, '-', 1)::int) as sets_favor,
+                    SUM(SPLIT_PART(resultado, '-', 2)::int) as sets_contra
+                FROM partidos_new
+                WHERE equipo_id = :equipo_id
+                AND resultado IS NOT NULL
+                AND resultado LIKE '%-%'
+            """), {"equipo_id": equipo_sel}).fetchone()
+        
+        partidos = stats[0] or 0
+        victorias = stats[1] or 0
+        derrotas = partidos - victorias
+        sets_favor = int(stats[2] or 0)
+        sets_contra = int(stats[3] or 0)
+        pct_victorias = round((victorias / partidos * 100), 1) if partidos > 0 else 0
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Partits", partidos)
+        col2.metric("Victòries", victorias, f"{pct_victorias}%")
+        col3.metric("Derrotes", derrotas)
+        col4.metric("Sets", f"{sets_favor}-{sets_contra}")
+        
+        # === RACHA ACTUAL ===
+        with get_engine().connect() as conn:
+            ultimos = pd.read_sql(text("""
+                SELECT resultado, local
+                FROM partidos_new
+                WHERE equipo_id = :equipo_id
+                AND resultado IS NOT NULL
+                ORDER BY fecha DESC
+                LIMIT 10
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not ultimos.empty:
+            racha = 0
+            tipo_racha = None
+            
+            for _, p in ultimos.iterrows():
+                try:
+                    sets = p['resultado'].split('-')
+                    if p['local']:
+                        victoria = int(sets[0]) > int(sets[1])
+                    else:
+                        victoria = int(sets[1]) > int(sets[0])
+                    
+                    if tipo_racha is None:
+                        tipo_racha = victoria
+                        racha = 1
+                    elif victoria == tipo_racha:
+                        racha += 1
+                    else:
+                        break
+                except:
+                    break
+            
+            if racha >= 2:
+                if tipo_racha:
+                    st.success(f"🔥 **Ratxa actual:** {racha} victòries seguides!")
+                else:
+                    st.warning(f"💪 **Ratxa actual:** {racha} derrotes seguides")
+        
+        # === ÚLTIMO PARTIDO ===
+        st.markdown("---")
+        st.subheader("📅 Últim Partit")
+        
+        with get_engine().connect() as conn:
+            ultimo = pd.read_sql(text("""
+                SELECT rival, local, fecha, resultado
+                FROM partidos_new
+                WHERE equipo_id = :equipo_id
+                ORDER BY fecha DESC
+                LIMIT 1
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not ultimo.empty:
+            p = ultimo.iloc[0]
+            tipo = "🏠 Local" if p['local'] else "✈️ Visitant"
+            fecha = p['fecha'].strftime("%d/%m/%Y") if p['fecha'] else "-"
+            
+            try:
+                sets = p['resultado'].split('-')
+                if p['local']:
+                    victoria = int(sets[0]) > int(sets[1])
+                else:
+                    victoria = int(sets[1]) > int(sets[0])
+                color = "#4CAF50" if victoria else "#F44336"
+                resultado_texto = "✅ Victòria" if victoria else "❌ Derrota"
+            except:
+                color = "#888"
+                resultado_texto = ""
+            
+            st.markdown(f"""
+            <div style="background: #f5f5f5; padding: 1rem; border-radius: 10px; border-left: 4px solid {color};">
+                <h3 style="margin: 0;">vs {p['rival']}</h3>
+                <p style="margin: 0.5rem 0;">{tipo} · {fecha}</p>
+                <p style="font-size: 1.5rem; font-weight: bold; margin: 0;">{p['resultado']} {resultado_texto}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # === MEJOR VICTORIA ===
+        st.markdown("---")
+        st.subheader("🏆 Millor Victòria")
+        
+        with get_engine().connect() as conn:
+            mejor = pd.read_sql(text("""
+                SELECT rival, local, fecha, resultado
+                FROM partidos_new
+                WHERE equipo_id = :equipo_id
+                AND resultado IS NOT NULL
+                AND (
+                    (local = true AND SPLIT_PART(resultado, '-', 1)::int > SPLIT_PART(resultado, '-', 2)::int) OR
+                    (local = false AND SPLIT_PART(resultado, '-', 2)::int > SPLIT_PART(resultado, '-', 1)::int)
+                )
+                ORDER BY 
+                    CASE WHEN local THEN SPLIT_PART(resultado, '-', 1)::int - SPLIT_PART(resultado, '-', 2)::int
+                         ELSE SPLIT_PART(resultado, '-', 2)::int - SPLIT_PART(resultado, '-', 1)::int END DESC
+                LIMIT 1
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not mejor.empty:
+            p = mejor.iloc[0]
+            tipo = "🏠" if p['local'] else "✈️"
+            fecha = p['fecha'].strftime("%d/%m/%Y") if p['fecha'] else "-"
+            
+            st.markdown(f"""
+            <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; border-left: 4px solid #4CAF50;">
+                <h3 style="margin: 0;">{tipo} vs {p['rival']}</h3>
+                <p style="margin: 0.5rem 0;">{fecha}</p>
+                <p style="font-size: 1.5rem; font-weight: bold; margin: 0; color: #4CAF50;">{p['resultado']} 🏆</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("Encara no hi ha victòries registrades")
+        
+        # === TOP 5 ANOTADORES ===
+        st.markdown("---")
+        st.subheader("⭐ Top 5 Anotadors")
+        
+        with get_engine().connect() as conn:
+            top_anotadores = pd.read_sql(text("""
+                SELECT 
+                    j.apellido as jugador,
+                    COUNT(*) FILTER (WHERE a.marca = '#') as puntos
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                JOIN partidos_new p ON a.partido_id = p.id
+                WHERE p.equipo_id = :equipo_id
+                AND a.tipo_accion IN ('atacar', 'saque', 'bloqueo')
+                GROUP BY j.id, j.apellido
+                ORDER BY puntos DESC
+                LIMIT 5
+            """), conn, params={"equipo_id": equipo_sel})
+        
+        if not top_anotadores.empty:
+            for idx, (_, row) in enumerate(top_anotadores.iterrows()):
+                medalla = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][idx]
+                st.markdown(f"""
+                <div style="background: #f5f5f5; padding: 0.5rem 1rem; border-radius: 5px; margin: 0.25rem 0; display: flex; justify-content: space-between; align-items: center;">
+                    <span>{medalla} <strong>{row['jugador']}</strong></span>
+                    <span style="font-weight: bold; color: #D32F2F;">{int(row['puntos'])} punts</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No hi ha dades d'anotadors")
+        
+        # === JUGADORES ===
+        st.markdown("---")
+        st.subheader("👥 Plantilla")
         
         with get_engine().connect() as conn:
             jugadores = pd.read_sql(text("""
@@ -309,10 +485,9 @@ def pagina_equipos_publica():
         else:
             st.info("No hi ha jugadors registrats")
         
+        # === HISTORIAL DE PARTIDOS ===
         st.markdown("---")
-        
-        # Partidos del equipo (solo resultados básicos)
-        st.subheader("📅 Partits")
+        st.subheader("📋 Historial de Partits")
         
         with get_engine().connect() as conn:
             partidos = pd.read_sql(text("""
@@ -320,7 +495,6 @@ def pagina_equipos_publica():
                 FROM partidos_new
                 WHERE equipo_id = :equipo_id
                 ORDER BY fecha DESC
-                LIMIT 10
             """), conn, params={"equipo_id": equipo_sel})
         
         if not partidos.empty:
@@ -331,11 +505,15 @@ def pagina_equipos_publica():
                 
                 # Color según resultado
                 if resultado and resultado != "-":
-                    sets = resultado.split("-")
-                    if len(sets) == 2 and int(sets[0]) > int(sets[1]):
-                        color = "#4CAF50"  # Verde - victoria
-                    else:
-                        color = "#F44336"  # Rojo - derrota
+                    try:
+                        sets = resultado.split("-")
+                        if partido['local']:
+                            victoria = int(sets[0]) > int(sets[1])
+                        else:
+                            victoria = int(sets[1]) > int(sets[0])
+                        color = "#4CAF50" if victoria else "#F44336"
+                    except:
+                        color = "#888"
                 else:
                     color = "#888"
                 
@@ -346,7 +524,6 @@ def pagina_equipos_publica():
                 """, unsafe_allow_html=True)
         else:
             st.info("No hi ha partits registrats")
-
 # =============================================================================
 # FUNCIONES DE DATOS
 # =============================================================================
