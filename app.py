@@ -725,6 +725,147 @@ def obtener_estadisticas_jugadores_partido(partido_ids):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_estadisticas_jugadores_por_set(partido_ids, set_numero):
+    """Obtiene estadísticas detalladas por jugador para un set específico"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
+                a.tipo_accion,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE a.marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE a.marca = '+') as positivos,
+                COUNT(*) FILTER (WHERE a.marca = '!') as neutros,
+                COUNT(*) FILTER (WHERE a.marca = '-') as negativos,
+                COUNT(*) FILTER (WHERE a.marca = '/') as errores_forzados,
+                COUNT(*) FILTER (WHERE a.marca = '=') as errores
+            FROM acciones_new a
+            JOIN jugadores j ON a.jugador_id = j.id
+            WHERE a.partido_id IN ({ids_str})
+            AND a.set_numero = :set_numero
+            AND a.tipo_accion IN ('atacar', 'recepción', 'saque', 'bloqueo')
+            GROUP BY j.nombre, j.apellido, a.tipo_accion
+            ORDER BY j.apellido, a.tipo_accion
+        """), conn, params={"set_numero": set_numero})
+        
+        if not df.empty:
+            df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+            df['eficiencia'] = ((df['puntos'] - df['errores']) / df['total'] * 100).round(1)
+        
+        return df
+
+
+@st.cache_data(ttl=60)
+def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
+    """Obtiene distribución de colocaciones por zona para un set específico"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            WITH total_ataques AS (
+                SELECT COUNT(*) as total
+                FROM acciones_new
+                WHERE partido_id IN ({ids_str})
+                AND set_numero = :set_numero
+                AND tipo_accion = 'atacar'
+                AND zona_jugador IS NOT NULL
+            )
+            SELECT 
+                UPPER(zona_jugador) AS zona,
+                COUNT(*) as colocaciones,
+                ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND set_numero = :set_numero
+            AND tipo_accion = 'atacar'
+            AND zona_jugador IS NOT NULL
+            GROUP BY zona_jugador
+            ORDER BY colocaciones DESC
+        """), conn, params={"set_numero": set_numero})
+        
+        return df
+
+
+@st.cache_data(ttl=60)
+def obtener_sideout_por_set(partido_ids, set_numero):
+    """Obtiene side-out y contraataque para un set específico"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    a.id,
+                    a.tipo_accion,
+                    a.marca,
+                    LAG(a.tipo_accion) OVER (ORDER BY a.id) as accion_previa,
+                    LAG(a.tipo_accion, 2) OVER (ORDER BY a.id) as accion_previa_2
+                FROM acciones_new a
+                WHERE a.partido_id IN ({ids_str})
+                AND a.set_numero = :set_numero
+            )
+            SELECT 
+                -- Side-out (ataque después de recepción)
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'recepción' OR (accion_previa = 'colocación' AND accion_previa_2 = 'recepción'))) as total_sideout,
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'recepción' OR (accion_previa = 'colocación' AND accion_previa_2 = 'recepción')) AND marca IN ('#', '+')) as sideout_positivo,
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'recepción' OR (accion_previa = 'colocación' AND accion_previa_2 = 'recepción')) AND marca = '#') as sideout_puntos,
+                
+                -- Contraataque (ataque después de defensa)
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'defensa' OR (accion_previa = 'colocación' AND accion_previa_2 = 'defensa'))) as total_contraataque,
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'defensa' OR (accion_previa = 'colocación' AND accion_previa_2 = 'defensa')) AND marca IN ('#', '+')) as contraataque_positivo,
+                COUNT(*) FILTER (WHERE tipo_accion = 'atacar' AND (accion_previa = 'defensa' OR (accion_previa = 'colocación' AND accion_previa_2 = 'defensa')) AND marca = '#') as contraataque_puntos
+            FROM acciones_ordenadas
+        """), conn, params={"set_numero": set_numero})
+        
+        return df
+
+
+@st.cache_data(ttl=60)
+def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
+    """Obtiene distribución de colocaciones por zona y rotación para un set específico"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                zona_colocador as rotacion,
+                UPPER(zona_jugador) AS zona,
+                COUNT(*) as colocaciones,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND set_numero = :set_numero
+            AND tipo_accion = 'atacar'
+            AND zona_jugador IS NOT NULL
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_colocador, zona_jugador
+            ORDER BY zona_colocador, colocaciones DESC
+        """), conn, params={"set_numero": set_numero})
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_estadisticas_jugador(partido_ids, jugador_id):
     """Obtiene estadísticas de un jugador para varios partidos"""
     if isinstance(partido_ids, int):
@@ -3076,243 +3217,209 @@ def pagina_partido():
         if df_sets.empty:
             st.info("No hi ha dades de sets disponibles")
         else:
-            # Mostrar resultados de sets
-            if not df_puntos_sets.empty:
-                st.markdown("##### 🏐 Resultat per Set")
-                
-                cols_sets = st.columns(len(df_puntos_sets))
-                for idx, (_, row) in enumerate(df_puntos_sets.iterrows()):
-                    with cols_sets[idx]:
-                        p_local = int(row['puntos_local']) if row['puntos_local'] else 0
-                        p_visit = int(row['puntos_visitante']) if row['puntos_visitante'] else 0
-                        
-                        # Determinar ganador del set
-                        if p_local > p_visit:
-                            color_resultado = COLOR_VERDE
-                            icono = "✅"
-                        elif p_local < p_visit:
-                            color_resultado = COLOR_ROJO
-                            icono = "❌"
-                        else:
-                            color_resultado = COLOR_NARANJA
-                            icono = "➡️"
-                        
-                        st.markdown(f"""
-                        <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado};">
-                            <strong>Set {int(row['numero_set'])}</strong><br>
-                            <span style="font-size: 1.5rem; font-weight: bold;">{p_local} - {p_visit}</span>
-                            <span style="font-size: 1.2rem;">{icono}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-            
-            # Preparar datos por set
+            # Selector de set
             sets_disponibles = sorted(df_sets['numero_set'].unique())
             
-            # Calcular métricas por set
-            metricas_sets = []
-            
-            for num_set in sets_disponibles:
-                df_set = df_sets[df_sets['numero_set'] == num_set]
-                
-                # Ataque
-                ataque = df_set[df_set['tipo_accion'] == 'atacar']
-                efic_ataque = float(ataque['eficacia'].iloc[0]) if not ataque.empty else 0
-                puntos_ataque = int(ataque['puntos'].iloc[0]) if not ataque.empty else 0
-                
-                # Recepción
-                recepcion = df_set[df_set['tipo_accion'] == 'recepción']
-                efic_recepcion = float(recepcion['eficacia'].iloc[0]) if not recepcion.empty else 0
-                
-                # Saque
-                saque = df_set[df_set['tipo_accion'] == 'saque']
-                puntos_saque = int(saque['puntos'].iloc[0]) if not saque.empty else 0
-                
-                # Bloqueo
-                bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
-                puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
-                
-                # Errores reales (solo recepción, ataque, saque = y error genérico)
-                errores_total = df_set['errores_reales'].iloc[0] if 'errores_reales' in df_set.columns and not df_set.empty else 0
-                
-                # Puntos directos totales
-                puntos_directos = puntos_ataque + puntos_saque + puntos_bloqueo
-                
-                metricas_sets.append({
-                    'set': int(num_set),
-                    'efic_ataque': efic_ataque,
-                    'efic_recepcion': efic_recepcion,
-                    'puntos_directos': puntos_directos,
-                    'puntos_ataque': puntos_ataque,
-                    'puntos_saque': puntos_saque,
-                    'puntos_bloqueo': puntos_bloqueo,
-                    'errores': int(errores_total)
-                })
-            
-            df_metricas = pd.DataFrame(metricas_sets)
-            
-            # Gráfico comparativo de eficacia por set
-            st.markdown("##### 📊 Eficàcia per Set")
-            
-            fig = go.Figure()
-            
-            fig.add_trace(go.Bar(
-                name='Atac',
-                x=[f"Set {s}" for s in df_metricas['set']],
-                y=df_metricas['efic_ataque'],
-                marker_color=COLOR_ROJO,
-                text=df_metricas['efic_ataque'].apply(lambda x: f'{x}%'),
-                textposition='outside'
-            ))
-            
-            fig.add_trace(go.Bar(
-                name='Recepció',
-                x=[f"Set {s}" for s in df_metricas['set']],
-                y=df_metricas['efic_recepcion'],
-                marker_color=COLOR_NEGRO,
-                text=df_metricas['efic_recepcion'].apply(lambda x: f'{x}%'),
-                textposition='outside'
-            ))
-            
-            fig.add_hline(y=60, line_dash="dash", line_color=COLOR_VERDE, 
-                          annotation_text="Bo (60%)")
-            fig.add_hline(y=40, line_dash="dash", line_color=COLOR_NARANJA,
-                          annotation_text="Regular (40%)")
-            
-            fig.update_layout(
-                barmode='group',
-                height=400,
-                yaxis=dict(range=[0, max(df_metricas['efic_ataque'].max(), df_metricas['efic_recepcion'].max()) + 15]),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            set_seleccionado = st.selectbox(
+                "Selecciona el set:",
+                options=sets_disponibles,
+                format_func=lambda x: f"Set {int(x)}",
+                key="selector_set_analisis"
             )
             
-            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
-            
-            # Gráfico de puntos directos y errores
-            st.markdown("##### ⚡ Punts Directes i Errors per Set")
-            
-            fig2 = go.Figure()
-            
-            fig2.add_trace(go.Bar(
-                name='Punts Directes',
-                x=[f"Set {s}" for s in df_metricas['set']],
-                y=df_metricas['puntos_directos'],
-                marker_color=COLOR_VERDE,
-                text=df_metricas['puntos_directos'],
-                textposition='outside'
-            ))
-            
-            fig2.add_trace(go.Bar(
-                name='Errors',
-                x=[f"Set {s}" for s in df_metricas['set']],
-                y=df_metricas['errores'],
-                marker_color=COLOR_ROJO,
-                text=df_metricas['errores'],
-                textposition='outside'
-            ))
-            
-            fig2.update_layout(
-                barmode='group',
-                height=350,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02)
-            )
-            
-            st.plotly_chart(fig2, use_container_width=True, config={'staticPlot': True})
-            
-            # Tabla detallada
-            st.markdown("##### 📋 Detall per Set")
-            
-            df_tabla = df_metricas.rename(columns={
-                'set': 'Set',
-                'efic_ataque': 'Efic. Atac (%)',
-                'efic_recepcion': 'Efic. Recep. (%)',
-                'puntos_directos': 'Punts Directes',
-                'puntos_ataque': '# Atac',
-                'puntos_saque': '# Saque',
-                'puntos_bloqueo': '# Bloc',
-                'errores': 'Errors'
-            })
-            
-            st.dataframe(df_tabla, use_container_width=True, hide_index=True)
-            
-            # Insights automáticos
-            st.markdown("---")
-            st.markdown("##### 💡 Insights")
-            
-            insights = []
-            
-            # Mejor y peor set en ataque
-            mejor_set_ataque = df_metricas.loc[df_metricas['efic_ataque'].idxmax()]
-            peor_set_ataque = df_metricas.loc[df_metricas['efic_ataque'].idxmin()]
-            
-            if mejor_set_ataque['efic_ataque'] != peor_set_ataque['efic_ataque']:
-                insights.append(f"🔥 **Millor set en atac:** Set {int(mejor_set_ataque['set'])} ({mejor_set_ataque['efic_ataque']}%)")
-                insights.append(f"⚠️ **Pitjor set en atac:** Set {int(peor_set_ataque['set'])} ({peor_set_ataque['efic_ataque']}%)")
-            
-            # Mejor y peor set en recepción
-            mejor_set_rec = df_metricas.loc[df_metricas['efic_recepcion'].idxmax()]
-            peor_set_rec = df_metricas.loc[df_metricas['efic_recepcion'].idxmin()]
-            
-            if mejor_set_rec['efic_recepcion'] != peor_set_rec['efic_recepcion']:
-                insights.append(f"🎯 **Millor set en recepció:** Set {int(mejor_set_rec['set'])} ({mejor_set_rec['efic_recepcion']}%)")
-            
-            # Set con más errores
-            set_mas_errores = df_metricas.loc[df_metricas['errores'].idxmax()]
-            if set_mas_errores['errores'] > 0:
-                insights.append(f"❌ **Més errors:** Set {int(set_mas_errores['set'])} ({int(set_mas_errores['errores'])} errors)")
-            
-            # Set con más puntos directos
-            set_mas_puntos = df_metricas.loc[df_metricas['puntos_directos'].idxmax()]
-            insights.append(f"⚡ **Més punts directes:** Set {int(set_mas_puntos['set'])} ({int(set_mas_puntos['puntos_directos'])} punts)")
-            
-            # Detectar tendencia (bajada en sets finales)
-            if len(df_metricas) >= 3:
-                efic_inicio = df_metricas.iloc[0]['efic_ataque']
-                efic_final = df_metricas.iloc[-1]['efic_ataque']
-                
-                if efic_inicio - efic_final > 10:
-                    insights.append(f"📉 **Alerta:** Tendència a baixar en atac cap als sets finals (-{efic_inicio - efic_final:.0f}%)")
-                elif efic_final - efic_inicio > 10:
-                    insights.append(f"📈 **Positiu:** Millora d'atac a mesura que avança el partit (+{efic_final - efic_inicio:.0f}%)")
-            
-            # Correlación victoria/eficacia
-            if not df_puntos_sets.empty and len(df_puntos_sets) > 1:
-                sets_ganados = []
-                sets_perdidos = []
-                
-                for idx, row in df_puntos_sets.iterrows():
-                    p_local = int(row['puntos_local']) if row['puntos_local'] else 0
-                    p_visit = int(row['puntos_visitante']) if row['puntos_visitante'] else 0
-                    num_set = int(row['numero_set'])
+            # Mostrar resultado del set seleccionado
+            if not df_puntos_sets.empty:
+                set_info = df_puntos_sets[df_puntos_sets['numero_set'] == set_seleccionado]
+                if not set_info.empty:
+                    p_local = int(set_info['puntos_local'].iloc[0]) if set_info['puntos_local'].iloc[0] else 0
+                    p_visit = int(set_info['puntos_visitante'].iloc[0]) if set_info['puntos_visitante'].iloc[0] else 0
                     
-                    metricas_set = df_metricas[df_metricas['set'] == num_set]
-                    if not metricas_set.empty:
-                        efic = metricas_set.iloc[0]['efic_ataque']
-                        if p_local > p_visit:
-                            sets_ganados.append(efic)
-                        elif p_local < p_visit:
-                            sets_perdidos.append(efic)
-                
-                if sets_ganados and sets_perdidos:
-                    media_ganados = sum(sets_ganados) / len(sets_ganados)
-                    media_perdidos = sum(sets_perdidos) / len(sets_perdidos)
-                    insights.append(f"📊 **Quan guanyeu:** {media_ganados:.0f}% efic. atac | **Quan perdeu:** {media_perdidos:.0f}%")
+                    if p_local > p_visit:
+                        color_resultado = COLOR_VERDE
+                        icono = "✅ Guanyat"
+                    elif p_local < p_visit:
+                        color_resultado = COLOR_ROJO
+                        icono = "❌ Perdut"
+                    else:
+                        color_resultado = COLOR_NARANJA
+                        icono = "➡️"
+                    
+                    st.markdown(f"""
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem;">
+                        <strong style="font-size: 1.2rem;">Set {int(set_seleccionado)}: {p_local} - {p_visit}</strong>
+                        <span style="margin-left: 1rem;">{icono}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
             
-            # Mostrar insights
-            col1, col2 = st.columns(2)
-            for idx, insight in enumerate(insights):
-                with col1 if idx % 2 == 0 else col2:
-                    st.info(insight)
-            
-            # === MOMENTOS CRÍTICOS ===
             st.markdown("---")
-            st.markdown("##### 🎯 Moments Crítics")
+            
+            # === ESTADÍSTICAS GENERALES DEL SET ===
+            st.markdown("##### 📊 Estadístiques del Set")
+            
+            df_set = df_sets[df_sets['numero_set'] == set_seleccionado]
+            
+            # Calcular métricas del set
+            ataque = df_set[df_set['tipo_accion'] == 'atacar']
+            efic_ataque = float(ataque['eficacia'].iloc[0]) if not ataque.empty else 0
+            
+            recepcion = df_set[df_set['tipo_accion'] == 'recepción']
+            efic_recepcion = float(recepcion['eficacia'].iloc[0]) if not recepcion.empty else 0
+            
+            saque = df_set[df_set['tipo_accion'] == 'saque']
+            puntos_saque = int(saque['puntos'].iloc[0]) if not saque.empty else 0
+            
+            bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
+            puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
+            
+            errores_total = df_set['errores_reales'].iloc[0] if 'errores_reales' in df_set.columns and not df_set.empty else 0
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Efic. Atac", f"{efic_ataque}%")
+            col2.metric("Efic. Recep.", f"{efic_recepcion}%")
+            col3.metric("Aces", puntos_saque)
+            col4.metric("Blocs", puntos_bloqueo)
+            col5.metric("Errors", int(errores_total))
+            
+            # === SIDE-OUT I CONTRAATAC ===
+            st.markdown("---")
+            st.markdown("##### ⚔️ Side-out i Contraatac")
+            
+            df_sideout = obtener_sideout_por_set(partido_ids, set_seleccionado)
+            
+            if not df_sideout.empty:
+                row = df_sideout.iloc[0]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    total_so = int(row['total_sideout']) if row['total_sideout'] else 0
+                    positivo_so = int(row['sideout_positivo']) if row['sideout_positivo'] else 0
+                    puntos_so = int(row['sideout_puntos']) if row['sideout_puntos'] else 0
+                    efic_so = round((positivo_so / total_so * 100), 1) if total_so > 0 else 0
+                    
+                    st.markdown(f"""
+                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🏐 Side-out</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_so}%</p>
+                        <p style="margin: 0;">{positivo_so}/{total_so} positius · {puntos_so} punts</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    total_ca = int(row['total_contraataque']) if row['total_contraataque'] else 0
+                    positivo_ca = int(row['contraataque_positivo']) if row['contraataque_positivo'] else 0
+                    puntos_ca = int(row['contraataque_puntos']) if row['contraataque_puntos'] else 0
+                    efic_ca = round((positivo_ca / total_ca * 100), 1) if total_ca > 0 else 0
+                    
+                    st.markdown(f"""
+                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">⚡ Contraatac</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_ca}%</p>
+                        <p style="margin: 0;">{positivo_ca}/{total_ca} positius · {puntos_ca} punts</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # === DISTRIBUCIÓ DEL COL·LOCADOR ===
+            st.markdown("---")
+            st.markdown("##### 🎯 Distribució del Col·locador")
+            
+            df_dist_set = obtener_distribucion_colocador_por_set(partido_ids, set_seleccionado)
+            
+            if not df_dist_set.empty:
+                # Gráfico de distribución
+                fig_dist = crear_grafico_distribucion_colocador(df_dist_set)
+                if fig_dist:
+                    st.plotly_chart(fig_dist, use_container_width=True, config={'staticPlot': True})
+                
+                # Tabla de detalle
+                with st.expander("📋 Detall per zona"):
+                    df_dist_display = df_dist_set.rename(columns={
+                        'zona': 'Zona',
+                        'colocaciones': 'Atacs',
+                        'porcentaje': '% Total',
+                        'eficacia': 'Eficàcia (%)',
+                        'puntos': 'Punts (#)'
+                    })
+                    st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hi ha dades de distribució per aquest set")
+            
+            # === DISTRIBUCIÓ PER ROTACIÓ ===
+            st.markdown("---")
+            st.markdown("##### 🔄 Distribució per Rotació")
+            
+            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, set_seleccionado)
+            
+            if not df_rot_set.empty:
+                rotaciones = sorted(df_rot_set['rotacion'].unique())
+                
+                # Crear 2 filas de 3 columnas
+                for fila in range(0, len(rotaciones), 3):
+                    cols = st.columns(3)
+                    for col_idx, col in enumerate(cols):
+                        rot_idx = fila + col_idx
+                        if rot_idx < len(rotaciones):
+                            rotacion = rotaciones[rot_idx]
+                            df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion]
+                            
+                            with col:
+                                fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion)
+                                st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+            else:
+                st.info("No hi ha dades de rotació per aquest set")
+            
+            # === DETALL PER JUGADOR ===
+            st.markdown("---")
+            st.markdown("##### 👥 Detall per Jugador")
+            
+            df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, set_seleccionado)
+            
+            if not df_jugadores_set.empty:
+                # Pivotar para mostrar por jugador
+                acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
+                
+                jugadores_unicos = df_jugadores_set['jugador'].unique()
+                
+                data_tabla = []
+                for jugador in jugadores_unicos:
+                    row_data = {'Jugador': jugador}
+                    df_jug = df_jugadores_set[df_jugadores_set['jugador'] == jugador]
+                    
+                    for accion in acciones:
+                        df_acc = df_jug[df_jug['tipo_accion'] == accion]
+                        if not df_acc.empty:
+                            if accion == 'atacar':
+                                row_data['Atac'] = f"{df_acc['eficacia'].iloc[0]}% ({int(df_acc['puntos'].iloc[0])}#)"
+                            elif accion == 'recepción':
+                                row_data['Recep.'] = f"{df_acc['eficacia'].iloc[0]}%"
+                            elif accion == 'saque':
+                                row_data['Saque'] = f"{int(df_acc['puntos'].iloc[0])}# / {int(df_acc['errores'].iloc[0])}="
+                            elif accion == 'bloqueo':
+                                row_data['Bloc'] = f"{int(df_acc['puntos'].iloc[0])}#"
+                        else:
+                            if accion == 'atacar':
+                                row_data['Atac'] = "-"
+                            elif accion == 'recepción':
+                                row_data['Recep.'] = "-"
+                            elif accion == 'saque':
+                                row_data['Saque'] = "-"
+                            elif accion == 'bloqueo':
+                                row_data['Bloc'] = "-"
+                    
+                    data_tabla.append(row_data)
+                
+                df_tabla = pd.DataFrame(data_tabla)
+                st.dataframe(df_tabla, use_container_width=True, hide_index=True, height=400)
+            else:
+                st.info("No hi ha dades de jugadors per aquest set")
+            
+            # === MOMENTS CRÍTICS DEL SET ===
+            st.markdown("---")
+            st.markdown("##### 🎯 Moments Crítics del Set")
             
             _, momentos = obtener_momentos_criticos(partido_ids)
             
             if momentos:
-                # Comparativa visual
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
@@ -3327,9 +3434,6 @@ def pagina_partido():
                         datos = momentos['inicio_set']
                         st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
                         st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
                     else:
                         st.info("Sense dades")
                 
@@ -3345,9 +3449,6 @@ def pagina_partido():
                         datos = momentos['ajustados']
                         st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
                         st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
                     else:
                         st.info("Sense dades")
                 
@@ -3363,105 +3464,8 @@ def pagina_partido():
                         datos = momentos['final_set']
                         st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
                         st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
-                        st.metric("Efic. Saque", f"{datos['eficacia_saque']}%")
-                        st.metric("Efic. Bloc", f"{datos['eficacia_bloqueo']}%")
-                        st.caption(f"⚡ {datos['puntos_directos']} pts | ❌ {datos['errores']} err")
                     else:
                         st.info("Sense dades")
-                
-                # Gráfico comparativo
-                if 'general' in momentos:
-                    st.markdown("---")
-                    st.markdown("##### 📊 Comparativa amb Rendiment General")
-                    
-                    # Selector de métrica
-                    metrica_seleccionada = st.selectbox(
-                        "Selecciona mètrica:",
-                        ["Atac", "Recepció", "Saque", "Bloqueig"],
-                        key="metrica_momentos_criticos"
-                    )
-                    
-                    metrica_map = {
-                        "Atac": "eficacia_ataque",
-                        "Recepció": "eficacia_recepcion",
-                        "Saque": "eficacia_saque",
-                        "Bloqueig": "eficacia_bloqueo"
-                    }
-                    
-                    metrica_key = metrica_map[metrica_seleccionada]
-                    
-                    categorias = ['Inici Set', 'Punts Ajustats', 'Final Set']
-                    efic_vals = [
-                        momentos.get('inicio_set', {}).get(metrica_key, 0),
-                        momentos.get('ajustados', {}).get(metrica_key, 0),
-                        momentos.get('final_set', {}).get(metrica_key, 0)
-                    ]
-                    efic_general = momentos['general'].get(metrica_key, 0)
-                    
-                    fig_momentos_criticos_comparativa = go.Figure()
-                    
-                    fig_momentos_criticos_comparativa.add_trace(go.Bar(
-                        x=categorias,
-                        y=efic_vals,
-                        name='Moment Crític',
-                        marker_color=[COLOR_VERDE if v >= efic_general else COLOR_ROJO for v in efic_vals],
-                        text=[f"{v}%" for v in efic_vals],
-                        textposition='outside'
-                    ))
-                    
-                    fig_momentos_criticos_comparativa.add_hline(
-                        y=efic_general, 
-                        line_dash="dash", 
-                        line_color=COLOR_NEGRO,
-                        annotation_text=f"Mitjana general: {efic_general}%"
-                    )
-                    
-                    fig_momentos_criticos_comparativa.update_layout(
-                        title=f"Eficàcia de {metrica_seleccionada} en Moments Crítics vs General",
-                        yaxis_title="Eficàcia (%)",
-                        height=350,
-                        yaxis=dict(range=[0, max(efic_vals + [efic_general]) + 15 if max(efic_vals + [efic_general]) > 0 else 100])
-                    )
-                    
-                    st.plotly_chart(fig_momentos_criticos_comparativa, use_container_width=True, config={'staticPlot': True})
-                    
-                    # Insights de momentos críticos
-                    st.markdown("##### 💡 Conclusions")
-                    
-                    insights_criticos = []
-                    
-                    # Analizar todas las métricas
-                    metricas_analizar = [
-                        ('eficacia_ataque', 'atac'),
-                        ('eficacia_recepcion', 'recepció'),
-                        ('eficacia_saque', 'saque'),
-                        ('eficacia_bloqueo', 'bloqueig')
-                    ]
-                    
-                    for metrica, nombre in metricas_analizar:
-                        # Puntos ajustados
-                        if 'ajustados' in momentos and 'general' in momentos:
-                            diff = momentos['ajustados'].get(metrica, 0) - momentos['general'].get(metrica, 0)
-                            if diff > 10:
-                                insights_criticos.append(f"✅ **{nombre.capitalize()} excel·lent en pressió!** +{diff:.1f}%")
-                            elif diff < -10:
-                                insights_criticos.append(f"⚠️ **{nombre.capitalize()} a millorar en pressió:** {diff:.1f}%")
-                        
-                        # Final de set
-                        if 'final_set' in momentos and 'general' in momentos:
-                            diff = momentos['final_set'].get(metrica, 0) - momentos['general'].get(metrica, 0)
-                            if diff > 10:
-                                insights_criticos.append(f"🏆 **{nombre.capitalize()} molt bo al final!** +{diff:.1f}%")
-                            elif diff < -10:
-                                insights_criticos.append(f"💪 **{nombre.capitalize()} baixa al final:** {diff:.1f}%")
-                    
-                    if insights_criticos:
-                        col1, col2 = st.columns(2)
-                        for idx, insight in enumerate(insights_criticos):
-                            with col1 if idx % 2 == 0 else col2:
-                                st.info(insight)
-                    else:
-                        st.info("➡️ Rendiment constant en tots els moments del partit")
             else:
                 st.info("No hi ha dades suficients de punts per analitzar moments crítics")
     
