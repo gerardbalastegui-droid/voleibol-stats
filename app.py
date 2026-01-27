@@ -204,12 +204,15 @@ def pagina_inicio_publica():
     if not equipos.empty:
         cols = st.columns(3)
         for idx, (_, equipo) in enumerate(equipos.iterrows()):
-            with cols[idx % 3]:
+            col_idx = idx % 3
+            with cols[col_idx]:
                 st.markdown(f"""
                 <div style="background: #f5f5f5; padding: 1rem; border-radius: 10px; text-align: center; margin: 0.5rem 0;">
                     <h4 style="margin: 0;">{equipo['nombre_completo']}</h4>
                 </div>
                 """, unsafe_allow_html=True)
+    else:
+        st.info("No hi ha equips disponibles")
     
     # Mostrar login si se ha pulsado el botón
     if st.session_state.get('mostrar_login'):
