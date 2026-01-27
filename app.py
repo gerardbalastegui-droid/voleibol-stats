@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sqlalchemy import create_engine, text
 from datetime import date
+import bcrypt
 import os
 
 # =============================================================================
@@ -67,6 +68,14 @@ st.markdown(f"""
 # CONEXIÓN A BASE DE DATOS
 # =============================================================================
 
+def encriptar_password(password):
+    """Encripta una contraseña con bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verificar_password(password, password_hash):
+    """Verifica si una contraseña coincide con su hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
 @st.cache_resource
 def get_engine():
     """Crea conexión a la base de datos"""
@@ -95,18 +104,32 @@ def verificar_login(username, password):
     """Verifica credenciales y devuelve info del usuario"""
     with get_engine().connect() as conn:
         resultado = conn.execute(text("""
-            SELECT id, username, equipo_id, es_admin
+            SELECT id, username, password, equipo_id, es_admin
             FROM usuarios
-            WHERE username = :username AND password = :password AND activo = TRUE
-        """), {"username": username, "password": password}).fetchone()
+            WHERE username = :username AND activo = TRUE
+        """), {"username": username}).fetchone()
         
         if resultado:
-            return {
-                'id': resultado[0],
-                'username': resultado[1],
-                'equipo_id': resultado[2],
-                'es_admin': resultado[3]
-            }
+            password_hash = resultado[2]
+            
+            # Verificar contraseña (soporta hash bcrypt y texto plano para migración)
+            password_valida = False
+            
+            # Si empieza por $2b$ es bcrypt
+            if password_hash.startswith('$2b$'):
+                password_valida = verificar_password(password, password_hash)
+            else:
+                # Texto plano (usuarios antiguos) - comparación directa
+                password_valida = (password == password_hash)
+            
+            if password_valida:
+                return {
+                    'id': resultado[0],
+                    'username': resultado[1],
+                    'equipo_id': resultado[3],
+                    'es_admin': resultado[4]
+                }
+        
         return None
 
 def pagina_login():
@@ -5809,7 +5832,7 @@ def pagina_admin():
                         import traceback
                         st.code(traceback.format_exc())
         
-# =================================
+    # =================================
     # TAB 6: USUARIOS
     # =================================
     with tab6:
@@ -5869,7 +5892,7 @@ def pagina_admin():
                             VALUES (:username, :password, :equipo_id, :es_admin, TRUE)
                         """), {
                             "username": nuevo_username,
-                            "password": nuevo_password,
+                            "password": encriptar_pasword(nuevo_password),
                             "equipo_id": nuevo_equipo,
                             "es_admin": nuevo_es_admin
                         })
@@ -5932,7 +5955,7 @@ def pagina_admin():
                                         SET password = :password, equipo_id = :equipo_id, es_admin = :es_admin, activo = :activo
                                         WHERE id = :id
                                     """), {
-                                        "password": edit_password,
+                                        "password": encriptar_password(edit_password),
                                         "equipo_id": edit_equipo,
                                         "es_admin": edit_es_admin,
                                         "activo": edit_activo,
