@@ -5251,9 +5251,9 @@ def pagina_admin():
     """, unsafe_allow_html=True)
     
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "🏆 Fases",
         "🏐 Equips",
         "📅 Temporades", 
-        "🏆 Fases",
         "👥 Jugadors",
         "📊 Partits",
         "👤 Usuaris",
