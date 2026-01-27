@@ -5998,6 +5998,12 @@ def pagina_admin():
 def sidebar_contexto():
     """Sidebar con contexto y navegación"""
     
+    # Inicializar contador de intentos de login
+    if 'intentos_login' not in st.session_state:
+        st.session_state.intentos_login = 0
+    if 'bloqueado_hasta' not in st.session_state:
+        st.session_state.bloqueado_hasta = None
+    
     logged_in = st.session_state.get('logged_in', False)
     es_admin = st.session_state.get('es_admin', False)
     
@@ -6012,31 +6018,67 @@ def sidebar_contexto():
         st.sidebar.markdown("👤 **Visitant**")
         
         with st.sidebar.expander("🔐 Iniciar sessió"):
-            username = st.text_input("Usuari:", key="sidebar_login_user")
-            password = st.text_input("Contrasenya:", type="password", key="sidebar_login_pass")
+            # Verificar si está bloqueado
+            import time
+            ahora = time.time()
             
-            if st.button("Entrar", type="primary", use_container_width=True, key="sidebar_login_btn"):
-                if username and password:
-                    usuario = verificar_login(username, password)
-                    
-                    if usuario:
-                        st.session_state.logged_in = True
-                        st.session_state.usuario = usuario
-                        st.session_state.es_admin = usuario['es_admin']
+            if st.session_state.bloqueado_hasta and ahora < st.session_state.bloqueado_hasta:
+                segundos_restantes = int(st.session_state.bloqueado_hasta - ahora)
+                st.error(f"⏳ Massa intents. Espera {segundos_restantes} segons.")
+            else:
+                # Resetear bloqueo si ya pasó el tiempo
+                if st.session_state.bloqueado_hasta and ahora >= st.session_state.bloqueado_hasta:
+                    st.session_state.intentos_login = 0
+                    st.session_state.bloqueado_hasta = None
+                
+                username = st.text_input("Usuari:", key="sidebar_login_user")
+                password = st.text_input("Contrasenya:", type="password", key="sidebar_login_pass")
+                
+                # Mostrar intentos restantes si hay alguno fallido
+                if st.session_state.intentos_login > 0:
+                    intentos_restantes = 5 - st.session_state.intentos_login
+                    st.warning(f"⚠️ {intentos_restantes} intents restants")
+                
+                if st.button("Entrar", type="primary", use_container_width=True, key="sidebar_login_btn"):
+                    if username and password:
+                        usuario = verificar_login(username, password)
                         
-                        if not usuario['es_admin'] and usuario['equipo_id']:
-                            st.session_state.equipo_id = usuario['equipo_id']
-                            equipos = cargar_equipos()
-                            equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
-                            if not equipo_info.empty:
-                                st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
-                        
-                        st.success(f"✅ Benvingut, {usuario['username']}!")
-                        st.rerun()
+                        if usuario:
+                            # Login correcto - resetear intentos
+                            st.session_state.intentos_login = 0
+                            st.session_state.bloqueado_hasta = None
+                            
+                            st.session_state.logged_in = True
+                            st.session_state.usuario = usuario
+                            st.session_state.es_admin = usuario['es_admin']
+                            
+                            if not usuario['es_admin'] and usuario['equipo_id']:
+                                st.session_state.equipo_id = usuario['equipo_id']
+                                equipos = cargar_equipos()
+                                equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                                if not equipo_info.empty:
+                                    st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                            
+                            # Registrar acceso exitoso
+                            registrar_acceso(usuario['id'], usuario['username'], True)
+                            
+                            st.success(f"✅ Benvingut, {usuario['username']}!")
+                            st.rerun()
+                        else:
+                            # Login fallido
+                            st.session_state.intentos_login += 1
+                            
+                            # Registrar intento fallido
+                            registrar_acceso(None, username, False)
+                            
+                            if st.session_state.intentos_login >= 5:
+                                # Bloquear durante 60 segundos
+                                st.session_state.bloqueado_hasta = time.time() + 60
+                                st.error("❌ Massa intents. Bloquejat 60 segons.")
+                            else:
+                                st.error("❌ Usuari o contrasenya incorrectes")
                     else:
-                        st.error("❌ Usuari o contrasenya incorrectes")
-                else:
-                    st.warning("⚠️ Introdueix usuari i contrasenya")
+                        st.warning("⚠️ Introdueix usuari i contrasenya")
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Context de Treball")
