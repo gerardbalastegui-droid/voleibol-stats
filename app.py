@@ -6010,9 +6010,33 @@ def sidebar_contexto():
             st.rerun()
     else:
         st.sidebar.markdown("👤 **Visitant**")
-        if st.sidebar.button("🔐 Iniciar sessió", use_container_width=True):
-            st.session_state.mostrar_login = True
-            st.rerun()
+        
+        with st.sidebar.expander("🔐 Iniciar sessió"):
+            username = st.text_input("Usuari:", key="sidebar_login_user")
+            password = st.text_input("Contrasenya:", type="password", key="sidebar_login_pass")
+            
+            if st.button("Entrar", type="primary", use_container_width=True, key="sidebar_login_btn"):
+                if username and password:
+                    usuario = verificar_login(username, password)
+                    
+                    if usuario:
+                        st.session_state.logged_in = True
+                        st.session_state.usuario = usuario
+                        st.session_state.es_admin = usuario['es_admin']
+                        
+                        if not usuario['es_admin'] and usuario['equipo_id']:
+                            st.session_state.equipo_id = usuario['equipo_id']
+                            equipos = cargar_equipos()
+                            equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                            if not equipo_info.empty:
+                                st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                        
+                        st.success(f"✅ Benvingut, {usuario['username']}!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Usuari o contrasenya incorrectes")
+                else:
+                    st.warning("⚠️ Introdueix usuari i contrasenya")
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Context de Treball")
