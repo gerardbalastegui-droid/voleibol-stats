@@ -3584,7 +3584,7 @@ def pagina_partido():
         for idx, row in df_jugadores_partido.iterrows():
             col_idx = idx % 4
             with cols[col_idx]:
-                dorsal_str = f"#{row['dorsal']}" if row['dorsal'] else ""
+                dorsal_str = f"#{int(row['dorsal'])}" if pd.notna(row['dorsal']) else ""
                 posicion_str = f"({row['posicion']})" if row['posicion'] else ""
                 st.markdown(f"""
                 <div style="background: {COLOR_GRIS}; padding: 0.5rem; border-radius: 5px; margin: 0.25rem 0; text-align: center;">
