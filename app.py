@@ -3453,7 +3453,7 @@ def pagina_partido():
                     text-align: center;
                 }
                 .tabla-jugadores-set th {
-                    background-color: #f5f5f5;
+                    background-color: #D32F2F;
                 }
                 .tabla-jugadores-set .header-accion {
                     background-color: #D32F2F;
