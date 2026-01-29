@@ -3282,30 +3282,54 @@ def pagina_partido():
         
         df_sets = obtener_estadisticas_por_set(partido_ids)
         df_puntos_sets = obtener_puntos_por_set(partido_ids)
-
-        # DEBUG TEMPORAL
-        st.write(f"partido_ids: {partido_ids}")
-        st.write(f"df_sets filas: {len(df_sets)}")
-        st.write(f"df_puntos_sets filas: {len(df_puntos_sets)}")
-        st.write(f"es lista: {isinstance(partido_ids, list)}")
         
         if df_sets.empty:
             st.info("No hi ha dades de sets disponibles")
         else:
+            # Detectar si hay múltiples partidos
+            es_multiple = isinstance(partido_ids, list) and len(partido_ids) > 1
+            
+            if es_multiple:
+                st.info(f"📊 Mostrant **mitjanes** de {len(partido_ids)} partits seleccionats")
+            
             # Selector de set
             sets_disponibles = sorted(df_sets['numero_set'].unique())
             
             set_seleccionado = st.selectbox(
                 "Selecciona el set:",
                 options=sets_disponibles,
-                format_func=lambda x: f"Set {int(x)}",
+                format_func=lambda x: f"Set {int(x)}" + (" (mitjana)" if es_multiple else ""),
                 key="selector_set_analisis"
             )
             
             # Mostrar resultado del set seleccionado
             if not df_puntos_sets.empty:
                 set_info = df_puntos_sets[df_puntos_sets['numero_set'] == set_seleccionado]
-                if not set_info.empty:
+                
+                if es_multiple and not set_info.empty:
+                    # Calcular medias y totales para múltiples partidos
+                    p_local_media = set_info['puntos_local'].mean()
+                    p_visit_media = set_info['puntos_visitante'].mean()
+                    sets_ganados = len(set_info[set_info['puntos_local'] > set_info['puntos_visitante']])
+                    sets_perdidos = len(set_info[set_info['puntos_local'] < set_info['puntos_visitante']])
+                    total_sets = len(set_info)
+                    
+                    if sets_ganados > sets_perdidos:
+                        color_resultado = COLOR_VERDE
+                    elif sets_ganados < sets_perdidos:
+                        color_resultado = COLOR_ROJO
+                    else:
+                        color_resultado = COLOR_NARANJA
+                    
+                    st.markdown(f"""
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem;">
+                        <strong style="font-size: 1.2rem;">Set {int(set_seleccionado)} - Mitjana: {p_local_media:.1f} - {p_visit_media:.1f}</strong><br>
+                        <span style="font-size: 0.9rem;">✅ {sets_ganados} guanyats · ❌ {sets_perdidos} perduts · Total: {total_sets} sets</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                elif not set_info.empty:
+                    # Partido único
                     p_local = int(set_info['puntos_local'].iloc[0]) if set_info['puntos_local'].iloc[0] else 0
                     p_visit = int(set_info['puntos_visitante'].iloc[0]) if set_info['puntos_visitante'].iloc[0] else 0
                     
@@ -3329,24 +3353,319 @@ def pagina_partido():
             st.markdown("---")
             
             # === ESTADÍSTICAS GENERALES DEL SET ===
-            st.markdown("##### 📊 Estadístiques del Set")
+            if es_multiple:
+                st.markdown("##### 📊 Estadístiques del Set (Mitjanes)")
+            else:
+                st.markdown("##### 📊 Estadístiques del Set")
             
             df_set = df_sets[df_sets['numero_set'] == int(set_seleccionado)]
             
-            # Calcular métricas del set
-            ataque = df_set[df_set['tipo_accion'] == 'atacar']
-            efic_ataque = float(ataque['eficacia'].iloc[0]) if not ataque.empty else 0
+            if es_multiple:
+                # Calcular medias agrupando por tipo_accion
+                ataque = df_set[df_set['tipo_accion'] == 'atacar']
+                efic_ataque = float(ataque['eficacia'].mean()) if not ataque.empty else 0
+                
+                recepcion = df_set[df_set['tipo_accion'] == 'recepción']
+                efic_recepcion = float(recepcion['eficacia'].mean()) if not recepcion.empty else 0
+                
+                saque = df_set[df_set['tipo_accion'] == 'saque']
+                puntos_saque = float(saque['puntos'].mean()) if not saque.empty else 0
+                
+                bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
+                puntos_bloqueo = float(bloqueo['puntos'].mean()) if not bloqueo.empty else 0
+                
+                errores_total = float(df_set['errores_reales'].mean()) if 'errores_reales' in df_set.columns and not df_set.empty else 0
+                
+                col1, col2, col3, col4, col5 = st.columns(5)
+                col1.metric("Efic. Atac", f"{efic_ataque:.1f}%")
+                col2.metric("Efic. Recep.", f"{efic_recepcion:.1f}%")
+                col3.metric("Aces (mitj.)", f"{puntos_saque:.1f}")
+                col4.metric("Blocs (mitj.)", f"{puntos_bloqueo:.1f}")
+                col5.metric("Errors (mitj.)", f"{errores_total:.1f}")
+            else:
+                # Partido único - valores exactos
+                ataque = df_set[df_set['tipo_accion'] == 'atacar']
+                efic_ataque = float(ataque['eficacia'].iloc[0]) if not ataque.empty else 0
+                
+                recepcion = df_set[df_set['tipo_accion'] == 'recepción']
+                efic_recepcion = float(recepcion['eficacia'].iloc[0]) if not recepcion.empty else 0
+                
+                saque = df_set[df_set['tipo_accion'] == 'saque']
+                puntos_saque = int(saque['puntos'].iloc[0]) if not saque.empty else 0
+                
+                bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
+                puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
+                
+                errores_total = df_set['errores_reales'].iloc[0] if 'errores_reales' in df_set.columns and not df_set.empty else 0
+                
+                col1, col2, col3, col4, col5 = st.columns(5)
+                col1.metric("Efic. Atac", f"{efic_ataque}%")
+                col2.metric("Efic. Recep.", f"{efic_recepcion}%")
+                col3.metric("Aces", puntos_saque)
+                col4.metric("Blocs", puntos_bloqueo)
+                col5.metric("Errors", int(errores_total))
             
-            recepcion = df_set[df_set['tipo_accion'] == 'recepción']
-            efic_recepcion = float(recepcion['eficacia'].iloc[0]) if not recepcion.empty else 0
+            # === SIDE-OUT I CONTRAATAC ===
+            st.markdown("---")
+            st.markdown("##### ⚔️ Side-out i Contraatac" + (" (Mitjanes)" if es_multiple else ""))
             
-            saque = df_set[df_set['tipo_accion'] == 'saque']
-            puntos_saque = int(saque['puntos'].iloc[0]) if not saque.empty else 0
+            df_sideout = obtener_sideout_por_set(partido_ids, int(set_seleccionado))
             
-            bloqueo = df_set[df_set['tipo_accion'] == 'bloqueo']
-            puntos_bloqueo = int(bloqueo['puntos'].iloc[0]) if not bloqueo.empty else 0
+            if not df_sideout.empty:
+                row = df_sideout.iloc[0]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    total_so = int(row['total_sideout']) if row['total_sideout'] else 0
+                    positivo_so = int(row['sideout_positivo']) if row['sideout_positivo'] else 0
+                    puntos_so = int(row['sideout_puntos']) if row['sideout_puntos'] else 0
+                    efic_so = round((positivo_so / total_so * 100), 1) if total_so > 0 else 0
+                    
+                    st.markdown(f"""
+                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">🏐 Side-out</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_so}%</p>
+                        <p style="margin: 0;">{positivo_so}/{total_so} positius · {puntos_so} punts</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    total_ca = int(row['total_contraataque']) if row['total_contraataque'] else 0
+                    positivo_ca = int(row['contraataque_positivo']) if row['contraataque_positivo'] else 0
+                    puntos_ca = int(row['contraataque_puntos']) if row['contraataque_puntos'] else 0
+                    efic_ca = round((positivo_ca / total_ca * 100), 1) if total_ca > 0 else 0
+                    
+                    st.markdown(f"""
+                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
+                        <h4 style="margin: 0;">⚡ Contraatac</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_ca}%</p>
+                        <p style="margin: 0;">{positivo_ca}/{total_ca} positius · {puntos_ca} punts</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No hi ha dades de side-out/contraatac per aquest set")
             
-            errores_total = df_set['errores_reales'].iloc[0] if 'errores_reales' in df_set.columns and not df_set.empty else 0
+            # === DISTRIBUCIÓ DEL COL·LOCADOR ===
+            st.markdown("---")
+            st.markdown("##### 🎯 Distribució del Col·locador" + (" (Agregat)" if es_multiple else ""))
+            
+            df_dist_set = obtener_distribucion_colocador_por_set(partido_ids, int(set_seleccionado))
+            
+            if not df_dist_set.empty:
+                # Gráfico de distribución
+                fig_dist = crear_grafico_distribucion_colocador(df_dist_set)
+                if fig_dist:
+                    st.plotly_chart(fig_dist, use_container_width=True, config={'staticPlot': True})
+                
+                # Tabla de detalle
+                with st.expander("📋 Detall per zona"):
+                    df_dist_display = df_dist_set.rename(columns={
+                        'zona': 'Zona',
+                        'colocaciones': 'Atacs',
+                        'porcentaje': '% Total',
+                        'eficacia': 'Eficàcia (%)',
+                        'puntos': 'Punts (#)'
+                    })
+                    st.dataframe(df_dist_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hi ha dades de distribució per aquest set")
+            
+            # === DISTRIBUCIÓ PER ROTACIÓ ===
+            st.markdown("---")
+            st.markdown("##### 🔄 Distribució per Rotació" + (" (Agregat)" if es_multiple else ""))
+            
+            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, int(set_seleccionado))
+            
+            if not df_rot_set.empty:
+                rotaciones = sorted(df_rot_set['rotacion'].unique())
+                
+                # Crear 2 filas de 3 columnas
+                for fila in range(0, len(rotaciones), 3):
+                    cols = st.columns(3)
+                    for col_idx, col in enumerate(cols):
+                        rot_idx = fila + col_idx
+                        if rot_idx < len(rotaciones):
+                            rotacion = rotaciones[rot_idx]
+                            df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion]
+                            
+                            with col:
+                                fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion)
+                                st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+            else:
+                st.info("No hi ha dades de rotació per aquest set")
+            
+            # === DETALL PER JUGADOR ===
+            st.markdown("---")
+            st.markdown("##### 👥 Detall per Jugador" + (" (Agregat)" if es_multiple else ""))
+            
+            df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, int(set_seleccionado))
+            
+            if not df_jugadores_set.empty:
+                # Pivotar datos para crear tabla como la de "Detall per Acció"
+                jugadores_unicos = df_jugadores_set['jugador'].unique()
+                acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
+                
+                data_rows = []
+                for jugador in jugadores_unicos:
+                    df_jug = df_jugadores_set[df_jugadores_set['jugador'] == jugador]
+                    
+                    row = {'Jugador': jugador}
+                    
+                    for accion in acciones:
+                        df_acc = df_jug[df_jug['tipo_accion'] == accion]
+                        
+                        if accion == 'atacar':
+                            prefix = 'Atac'
+                        elif accion == 'recepción':
+                            prefix = 'Recep'
+                        elif accion == 'saque':
+                            prefix = 'Saque'
+                        else:
+                            prefix = 'Bloc'
+                        
+                        if not df_acc.empty:
+                            row[f'{prefix}_#'] = int(df_acc['puntos'].iloc[0])
+                            row[f'{prefix}_+'] = int(df_acc['positivos'].iloc[0])
+                            row[f'{prefix}_!'] = int(df_acc['neutros'].iloc[0])
+                            row[f'{prefix}_-'] = int(df_acc['negativos'].iloc[0])
+                            row[f'{prefix}_/'] = int(df_acc['errores_forzados'].iloc[0])
+                            row[f'{prefix}_='] = int(df_acc['errores'].iloc[0])
+                            row[f'{prefix}_Efc'] = df_acc['eficacia'].iloc[0]
+                            row[f'{prefix}_Efn'] = df_acc['eficiencia'].iloc[0]
+                        else:
+                            row[f'{prefix}_#'] = ''
+                            row[f'{prefix}_+'] = ''
+                            row[f'{prefix}_!'] = ''
+                            row[f'{prefix}_-'] = ''
+                            row[f'{prefix}_/'] = ''
+                            row[f'{prefix}_='] = ''
+                            row[f'{prefix}_Efc'] = ''
+                            row[f'{prefix}_Efn'] = ''
+                    
+                    data_rows.append(row)
+                
+                df_tabla = pd.DataFrame(data_rows)
+                
+                # Crear tabla con headers multinivel usando HTML
+                st.markdown("""
+                <style>
+                .tabla-jugadores-set {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.85rem;
+                }
+                .tabla-jugadores-set th, .tabla-jugadores-set td {
+                    border: 1px solid #ddd;
+                    padding: 4px 8px;
+                    text-align: center;
+                }
+                .tabla-jugadores-set th {
+                    background-color: #f5f5f5;
+                }
+                .tabla-jugadores-set .header-accion {
+                    background-color: #D32F2F;
+                    color: white;
+                }
+                .tabla-jugadores-set .jugador-col {
+                    text-align: left;
+                    font-weight: bold;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Construir tabla HTML
+                html = '<table class="tabla-jugadores-set">'
+                
+                # Header de acciones
+                html += '<tr>'
+                html += '<th rowspan="2">Jugador</th>'
+                html += '<th colspan="8" class="header-accion">Atac</th>'
+                html += '<th colspan="8" class="header-accion">Recepció</th>'
+                html += '<th colspan="8" class="header-accion">Saque</th>'
+                html += '<th colspan="8" class="header-accion">Bloqueig</th>'
+                html += '</tr>'
+                
+                # Header de columnas
+                html += '<tr>'
+                for _ in range(4):
+                    html += '<th>#</th><th>+</th><th>!</th><th>-</th><th>/</th><th>=</th><th>Efc</th><th>Efn</th>'
+                html += '</tr>'
+                
+                # Filas de datos
+                for _, row in df_tabla.iterrows():
+                    html += '<tr>'
+                    html += f'<td class="jugador-col">{row["Jugador"]}</td>'
+                    
+                    for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                        for col in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
+                            val = row[f'{prefix}_{col}']
+                            html += f'<td>{val}</td>'
+                    
+                    html += '</tr>'
+                
+                html += '</table>'
+                
+                st.markdown(html, unsafe_allow_html=True)
+            else:
+                st.info("No hi ha dades de jugadors per aquest set")
+            
+            # === MOMENTS CRÍTICS DEL SET ===
+            if not es_multiple:
+                st.markdown("---")
+                st.markdown("##### 🎯 Moments Crítics del Set")
+                
+                _, momentos = obtener_momentos_criticos(partido_ids)
+                
+                if momentos:
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0;">🚀 Inici de Set</h4>
+                            <p style="font-size: 0.8rem; color: #666;">(0-5 punts)</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if 'inicio_set' in momentos:
+                            datos = momentos['inicio_set']
+                            st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                            st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        else:
+                            st.info("Sense dades")
+                    
+                    with col2:
+                        st.markdown(f"""
+                        <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0;">⚔️ Punts Ajustats</h4>
+                            <p style="font-size: 0.8rem; color: #666;">(diferència ≤2, +18 pts)</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if 'ajustados' in momentos:
+                            datos = momentos['ajustados']
+                            st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                            st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        else:
+                            st.info("Sense dades")
+                    
+                    with col3:
+                        st.markdown(f"""
+                        <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0;">🏁 Final de Set</h4>
+                            <p style="font-size: 0.8rem; color: #666;">(+20 punts)</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if 'final_set' in momentos:
+                            datos = momentos['final_set']
+                            st.metric("Efic. Atac", f"{datos['eficacia_ataque']}%")
+                            st.metric("Efic. Recep.", f"{datos['eficacia_recepcion']}%")
+                        else:
+                            st.info("Sense dades")
+                else:
+                    st.info("No hi ha dades suficients de punts per analitzar moments crítics")
             
     
     # === RANKINGS ===
