@@ -3277,7 +3277,7 @@ def pagina_partido():
         else:
             st.info("No hi ha dades d'errors")
 
-        with tab6:
+    with tab6:
         st.subheader("📈 Anàlisi per Sets")
         
         df_sets = obtener_estadisticas_por_set(partido_ids)
