@@ -3282,6 +3282,12 @@ def pagina_partido():
         
         df_sets = obtener_estadisticas_por_set(partido_ids)
         df_puntos_sets = obtener_puntos_por_set(partido_ids)
+
+        # DEBUG TEMPORAL
+        st.write(f"partido_ids: {partido_ids}")
+        st.write(f"df_sets filas: {len(df_sets)}")
+        st.write(f"df_puntos_sets filas: {len(df_puntos_sets)}")
+        st.write(f"es lista: {isinstance(partido_ids, list)}")
         
         if df_sets.empty:
             st.info("No hi ha dades de sets disponibles")
