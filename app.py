@@ -763,10 +763,9 @@ def obtener_estadisticas_jugadores_por_set(partido_ids, set_numero):
         
         return df
 
-
 @st.cache_data(ttl=60)
-def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
-    """Obtiene distribución de colocaciones por zona para un set específico"""
+def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
+    """Obtiene distribución de colocaciones por zona y rotación para un set específico (solo ataques después de colocación)"""
     if isinstance(partido_ids, int):
         partido_ids = [partido_ids]
     
@@ -774,13 +773,66 @@ def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
     
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
-            WITH total_ataques AS (
-                SELECT COUNT(*) as total
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    tipo_accion,
+                    marca,
+                    zona_jugador,
+                    zona_colocador,
+                    LAG(tipo_accion) OVER (ORDER BY id) as accion_previa
                 FROM acciones_new
                 WHERE partido_id IN ({ids_str})
                 AND set_numero = :set_numero
-                AND tipo_accion = 'atacar'
+            )
+            SELECT 
+                zona_colocador as rotacion,
+                UPPER(zona_jugador) AS zona,
+                COUNT(*) as colocaciones,
+                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos
+            FROM acciones_ordenadas
+            WHERE tipo_accion = 'atacar'
+            AND accion_previa = 'colocación'
+            AND zona_jugador IS NOT NULL
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_colocador, zona_jugador
+            ORDER BY zona_colocador, colocaciones DESC
+        """), conn, params={"set_numero": set_numero})
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
+    """Obtiene distribución de colocaciones por zona para un set específico (solo ataques después de colocación)"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    tipo_accion,
+                    marca,
+                    zona_jugador,
+                    LAG(tipo_accion) OVER (ORDER BY id) as accion_previa
+                FROM acciones_new
+                WHERE partido_id IN ({ids_str})
+                AND set_numero = :set_numero
+            ),
+            ataques_colocados AS (
+                SELECT *
+                FROM acciones_ordenadas
+                WHERE tipo_accion = 'atacar'
+                AND accion_previa = 'colocación'
                 AND zona_jugador IS NOT NULL
+            ),
+            total_ataques AS (
+                SELECT COUNT(*) as total
+                FROM ataques_colocados
             )
             SELECT 
                 UPPER(zona_jugador) AS zona,
@@ -788,11 +840,7 @@ def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
                 ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
                 ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
-            FROM acciones_new
-            WHERE partido_id IN ({ids_str})
-            AND set_numero = :set_numero
-            AND tipo_accion = 'atacar'
-            AND zona_jugador IS NOT NULL
+            FROM ataques_colocados
             GROUP BY zona_jugador
             ORDER BY colocaciones DESC
         """), conn, params={"set_numero": set_numero})
@@ -838,8 +886,8 @@ def obtener_sideout_por_set(partido_ids, set_numero):
 
 
 @st.cache_data(ttl=60)
-def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
-    """Obtiene distribución de colocaciones por zona y rotación para un set específico"""
+def obtener_distribucion_por_rotacion(partido_ids):
+    """Obtiene distribución de colocaciones por zona y rotación (solo ataques después de colocación)"""
     if isinstance(partido_ids, int):
         partido_ids = [partido_ids]
     
@@ -847,21 +895,31 @@ def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
     
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    tipo_accion,
+                    marca,
+                    zona_jugador,
+                    zona_colocador,
+                    LAG(tipo_accion) OVER (ORDER BY id) as accion_previa
+                FROM acciones_new
+                WHERE partido_id IN ({ids_str})
+            )
             SELECT 
                 zona_colocador as rotacion,
                 UPPER(zona_jugador) AS zona,
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
-            FROM acciones_new
-            WHERE partido_id IN ({ids_str})
-            AND set_numero = :set_numero
-            AND tipo_accion = 'atacar'
+            FROM acciones_ordenadas
+            WHERE tipo_accion = 'atacar'
+            AND accion_previa = 'colocación'
             AND zona_jugador IS NOT NULL
             AND zona_colocador IS NOT NULL
             GROUP BY zona_colocador, zona_jugador
             ORDER BY zona_colocador, colocaciones DESC
-        """), conn, params={"set_numero": set_numero})
+        """), conn)
         
         return df
 
@@ -1098,7 +1156,7 @@ def obtener_top_jugadores(partido_ids):
 
 @st.cache_data(ttl=60)
 def obtener_distribucion_colocador(partido_ids):
-    """Obtiene distribución de colocaciones por zona"""
+    """Obtiene distribución de colocaciones por zona (solo ataques después de colocación)"""
     if isinstance(partido_ids, int):
         partido_ids = [partido_ids]
     
@@ -1106,12 +1164,26 @@ def obtener_distribucion_colocador(partido_ids):
     
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
-            WITH total_ataques AS (
-                SELECT COUNT(*) as total
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    tipo_accion,
+                    marca,
+                    zona_jugador,
+                    LAG(tipo_accion) OVER (ORDER BY id) as accion_previa
                 FROM acciones_new
                 WHERE partido_id IN ({ids_str})
-                AND tipo_accion = 'atacar'
+            ),
+            ataques_colocados AS (
+                SELECT *
+                FROM acciones_ordenadas
+                WHERE tipo_accion = 'atacar'
+                AND accion_previa = 'colocación'
                 AND zona_jugador IS NOT NULL
+            ),
+            total_ataques AS (
+                SELECT COUNT(*) as total
+                FROM ataques_colocados
             )
             SELECT 
                 UPPER(zona_jugador) AS zona,
@@ -1119,10 +1191,7 @@ def obtener_distribucion_colocador(partido_ids):
                 ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
                 ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
-            FROM acciones_new
-            WHERE partido_id IN ({ids_str})
-            AND tipo_accion = 'atacar'
-            AND zona_jugador IS NOT NULL
+            FROM ataques_colocados
             GROUP BY zona_jugador
             ORDER BY colocaciones DESC
         """), conn)
