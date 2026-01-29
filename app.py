@@ -838,7 +838,7 @@ def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
                 UPPER(zona_jugador) AS zona,
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
-                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
             FROM ataques_colocados
             GROUP BY zona_jugador
@@ -910,7 +910,7 @@ def obtener_distribucion_por_rotacion(partido_ids):
                 zona_colocador as rotacion,
                 UPPER(zona_jugador) AS zona,
                 COUNT(*) as colocaciones,
-                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
             FROM acciones_ordenadas
             WHERE tipo_accion = 'atacar'
@@ -1189,7 +1189,7 @@ def obtener_distribucion_colocador(partido_ids):
                 UPPER(zona_jugador) AS zona,
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*)::decimal / NULLIF((SELECT total FROM total_ataques), 0)) * 100, 1) as porcentaje,
-                ROUND((COUNT(*) FILTER (WHERE marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
             FROM ataques_colocados
             GROUP BY zona_jugador
