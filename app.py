@@ -1788,14 +1788,15 @@ def obtener_puntos_por_set(partido_ids):
     with get_engine().connect() as conn:
         df = pd.read_sql(text(f"""
             SELECT 
+                partido_id,
                 set_numero as numero_set,
                 MAX(puntos_local) as puntos_local,
                 MAX(puntos_visitante) as puntos_visitante
             FROM acciones_new
             WHERE partido_id IN ({ids_str})
             AND set_numero IS NOT NULL
-            GROUP BY set_numero
-            ORDER BY set_numero
+            GROUP BY partido_id, set_numero
+            ORDER BY partido_id, set_numero
         """), conn)
         
         # Sumar +1 al ganador de cada set (el Excel no incluye el último punto)
