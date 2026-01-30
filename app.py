@@ -2512,7 +2512,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
         title=f"Rotació {rotacion} ({total_ataques} atacs)",
         xaxis=dict(visible=False, range=[-0.8, 3.2]),
         yaxis=dict(visible=False, range=[-0.6, 1.5], scaleanchor="x"),
-        height=220,
+        height=300,
         margin=dict(l=5, r=5, t=35, b=5),
         showlegend=False,
         plot_bgcolor='white'
@@ -3080,7 +3080,7 @@ def pagina_partido():
                     
                     # Crear 2 filas de 3 columnas
                     for fila in range(0, len(rotaciones), 3):
-                        cols = st.columns(3)
+                        cols = st.columns(2)
                         for col_idx, col in enumerate(cols):
                             rot_idx = fila + col_idx
                             if rot_idx < len(rotaciones):
