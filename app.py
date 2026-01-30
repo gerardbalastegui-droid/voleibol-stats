@@ -2511,8 +2511,8 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
     fig.update_layout(
         title=f"Rotació {rotacion} ({total_ataques} atacs)",
         xaxis=dict(visible=False, range=[-0.8, 3.2]),
-        yaxis=dict(visible=False, range=[-0.6, 1.5]),
-        height=300,
+        yaxis=dict(visible=False, range=[-0.6, 1.5], scaleanchor="x"),
+        height=220,
         margin=dict(l=5, r=5, t=35, b=5),
         showlegend=False,
         plot_bgcolor='white'
