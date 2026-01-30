@@ -2513,7 +2513,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
         xaxis=dict(visible=False, range=[-0.7, 3.1]),
         yaxis=dict(visible=False, range=[-0.6, 1.6], scaleanchor="x"),
         height=550,
-        margin=dict(l=10, r=10, t=30, b=5),
+        margin=dict(l=10, r=10, t=5, b=1),
         showlegend=False,
         plot_bgcolor='white'
     )
