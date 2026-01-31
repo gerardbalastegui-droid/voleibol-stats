@@ -516,6 +516,34 @@ def pagina_equipos_publica():
                 """, unsafe_allow_html=True)
         else:
             st.info("No hi ha dades d'anotadors")
+
+        # === GRÀFIC DE RANKINGS ===
+        st.markdown("---")
+        st.subheader("📈 Comparativa de Jugadors")
+        
+        df_rankings = obtener_rankings_todas_acciones(equipo_sel)
+        
+        if not df_rankings.empty:
+            # Selector de jugador
+            jugadores_disponibles = sorted(df_rankings['jugador'].unique())
+            
+            jugador_sel = st.selectbox(
+                "Selecciona un jugador per destacar-lo:",
+                options=[None] + jugadores_disponibles,
+                format_func=lambda x: "Cap seleccionat (tots en gris)" if x is None else x,
+                key="selector_jugador_ranking"
+            )
+            
+            # Crear y mostrar gráfico
+            fig_ranking = crear_grafico_ranking_jugadores(df_rankings, jugador_sel)
+            
+            if fig_ranking:
+                st.plotly_chart(fig_ranking, use_container_width=True, config={'staticPlot': True})
+                
+                # Mostrar leyenda/explicación
+                st.caption("El gràfic mostra la posició de cada jugador al ranking d'eficàcia per cada acció. Posició 1 = millor del equip.")
+        else:
+            st.info("No hi ha prou dades per mostrar el gràfic de rankings")
         
         # === JUGADORES ===
         st.markdown("---")
@@ -1101,6 +1129,46 @@ def obtener_ranking_equipo(partido_ids, tipo_accion):
         
         if not df.empty:
             df['ranking'] = range(1, len(df) + 1)
+        
+        return df
+
+@st.cache_data(ttl=60)
+def obtener_rankings_todas_acciones(equipo_id):
+    """Obtiene el ranking de todos los jugadores en todas las acciones"""
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text("""
+            WITH stats AS (
+                SELECT 
+                    j.id as jugador_id,
+                    CASE 
+                        WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                        THEN j.nombre || ' ' || j.apellido 
+                        ELSE j.apellido 
+                    END AS jugador,
+                    a.tipo_accion,
+                    COUNT(*) as total,
+                    ROUND((COUNT(*) FILTER (WHERE a.marca IN ('#','+'))::decimal / NULLIF(COUNT(*),0))*100, 1) as eficacia
+                FROM acciones_new a
+                JOIN jugadores j ON a.jugador_id = j.id
+                JOIN partidos_new p ON a.partido_id = p.id
+                WHERE p.equipo_id = :equipo_id
+                AND a.tipo_accion IN ('recepción', 'atacar', 'saque', 'bloqueo')
+                GROUP BY j.id, j.nombre, j.apellido, a.tipo_accion
+                HAVING COUNT(*) >= 5
+            ),
+            rankings AS (
+                SELECT 
+                    jugador_id,
+                    jugador,
+                    tipo_accion,
+                    eficacia,
+                    ROW_NUMBER() OVER (PARTITION BY tipo_accion ORDER BY eficacia DESC) as ranking
+                FROM stats
+            )
+            SELECT * FROM rankings
+            ORDER BY jugador, tipo_accion
+        """), conn, params={"equipo_id": equipo_id})
         
         return df
 
@@ -2333,6 +2401,97 @@ def crear_podio(df_top, titulo="🏆 Top Anotadors"):
                     <p>🔥 {int(jugador['ataque'])} | 🎯 {int(jugador['saque'])} | 🧱 {int(jugador['bloqueo'])}</p>
                 </div>
                 """, unsafe_allow_html=True)
+
+def crear_grafico_ranking_jugadores(df_rankings, jugador_seleccionado=None):
+    """Crea gráfico de líneas paralelas con rankings por acción"""
+    
+    if df_rankings.empty:
+        return None
+    
+    # Pivotar datos para tener una fila por jugador
+    acciones_orden = ['recepción', 'atacar', 'saque', 'bloqueo']
+    acciones_nombres = ['Recepció', 'Atac', 'Saque', 'Bloqueig']
+    
+    jugadores = df_rankings['jugador'].unique()
+    
+    fig = go.Figure()
+    
+    # Encontrar el máximo ranking para invertir el eje Y
+    max_ranking = df_rankings['ranking'].max()
+    
+    # Dibujar línea de cada jugador
+    for jugador in jugadores:
+        df_jug = df_rankings[df_rankings['jugador'] == jugador]
+        
+        # Obtener ranking en cada acción (en orden)
+        rankings = []
+        for accion in acciones_orden:
+            rank_accion = df_jug[df_jug['tipo_accion'] == accion]['ranking'].values
+            if len(rank_accion) > 0:
+                rankings.append(rank_accion[0])
+            else:
+                rankings.append(None)
+        
+        # Determinar si es el jugador seleccionado
+        es_seleccionado = jugador == jugador_seleccionado
+        
+        # Color y grosor según si está seleccionado
+        if es_seleccionado:
+            color = '#D32F2F'
+            width = 4
+            opacity = 1
+        else:
+            color = '#CCCCCC'
+            width = 1.5
+            opacity = 0.5
+        
+        # Añadir línea
+        fig.add_trace(go.Scatter(
+            x=acciones_nombres,
+            y=rankings,
+            mode='lines+markers',
+            name=jugador,
+            line=dict(color=color, width=width),
+            marker=dict(size=10 if es_seleccionado else 6, color=color),
+            opacity=opacity,
+            hovertemplate=f'<b>{jugador}</b><br>%{{x}}: #%{{y}}<extra></extra>'
+        ))
+    
+    # Si hay jugador seleccionado, moverlo al frente (dibujarlo último)
+    if jugador_seleccionado:
+        # Reordenar traces para que el seleccionado esté al final
+        traces = list(fig.data)
+        for i, trace in enumerate(traces):
+            if trace.name == jugador_seleccionado:
+                traces.append(traces.pop(i))
+                break
+        fig.data = traces
+    
+    fig.update_layout(
+        title="📊 Ranking de Jugadors per Acció",
+        xaxis=dict(
+            title="",
+            tickfont=dict(size=14, color='black'),
+        ),
+        yaxis=dict(
+            title="Posició al Ranking",
+            autorange='reversed',  # 1 arriba, números altos abajo
+            tickmode='linear',
+            tick0=1,
+            dtick=1,
+            range=[0.5, max_ranking + 0.5]
+        ),
+        height=450,
+        showlegend=False,
+        hovermode='closest',
+        plot_bgcolor='white'
+    )
+    
+    # Añadir líneas de grid verticales
+    for i, accion in enumerate(acciones_nombres):
+        fig.add_vline(x=i, line_dash="dot", line_color="#EEEEEE")
+    
+    return fig
 
 # =============================================================================
 # NUEVAS FUNCIONES DE VISUALIZACIÓN - ANÁLISIS AVANZADO
