@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, text
 from datetime import date
 import bcrypt
 import os
+import secrets
 
 # =============================================================================
 # CONFIGURACIÓN
@@ -132,6 +133,56 @@ def verificar_login(username, password):
         
         return None
 
+def crear_sesion(usuario_id):
+    """Crea una sesión persistente para el usuario"""
+    token = secrets.token_hex(32)
+    try:
+        with get_engine().begin() as conn:
+            # Eliminar sesiones antiguas del usuario
+            conn.execute(text("DELETE FROM sesiones WHERE usuario_id = :usuario_id"), {"usuario_id": usuario_id})
+            # Crear nueva sesión
+            conn.execute(text("""
+                INSERT INTO sesiones (usuario_id, token)
+                VALUES (:usuario_id, :token)
+            """), {"usuario_id": usuario_id, "token": token})
+        return token
+    except:
+        return None
+
+def verificar_sesion(token):
+    """Verifica si un token de sesión es válido y devuelve el usuario"""
+    if not token:
+        return None
+    try:
+        with get_engine().connect() as conn:
+            resultado = conn.execute(text("""
+                SELECT u.id, u.username, u.equipo_id, u.es_admin
+                FROM sesiones s
+                JOIN usuarios u ON s.usuario_id = u.id
+                WHERE s.token = :token
+                AND s.fecha_expiracion > CURRENT_TIMESTAMP
+                AND u.activo = TRUE
+            """), {"token": token}).fetchone()
+            
+            if resultado:
+                return {
+                    'id': resultado[0],
+                    'username': resultado[1],
+                    'equipo_id': resultado[2],
+                    'es_admin': resultado[3]
+                }
+        return None
+    except:
+        return None
+
+def eliminar_sesion(token):
+    """Elimina una sesión"""
+    try:
+        with get_engine().begin() as conn:
+            conn.execute(text("DELETE FROM sesiones WHERE token = :token"), {"token": token})
+    except:
+        pass
+
 def registrar_acceso(usuario_id, username, exitoso):
     """Registra un intento de acceso en la base de datos"""
     try:
@@ -180,10 +231,18 @@ def pagina_login():
             st.warning("⚠️ Introdueix usuari i contrasenya")
 
 def logout():
-    """Cierra la sesión"""
-    for key in ['logged_in', 'usuario', 'es_admin', 'equipo_id', 'equipo_nombre', 'temporada_id', 'temporada_nombre', 'fase_id']:
-        if key in st.session_state:
-            del st.session_state[key]
+    """Cierra la sesión del usuario"""
+    # Eliminar sesión de BD
+    if 'session_token' in st.session_state:
+        eliminar_sesion(st.session_state.session_token)
+    
+    # Limpiar query params
+    if 'session' in st.query_params:
+        del st.query_params['session']
+    
+    # Limpiar session state
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
 
 def mostrar_login_inline():
     """Muestra formulario de login en la página actual"""
@@ -6491,6 +6550,12 @@ def sidebar_contexto():
                             st.session_state.logged_in = True
                             st.session_state.usuario = usuario
                             st.session_state.es_admin = usuario['es_admin']
+
+                            # Crear sesión persistente
+                            token = crear_sesion(usuario['id'])
+                            if token:
+                                st.session_state.session_token = token
+                                st.query_params['session'] = token
                             
                             if not usuario['es_admin'] and usuario['equipo_id']:
                                 st.session_state.equipo_id = usuario['equipo_id']
@@ -6631,6 +6696,24 @@ def sidebar_contexto():
 
 def main():
     """Función principal"""
+    
+    # Verificar si hay sesión guardada en query params
+    if not st.session_state.get('logged_in'):
+        token = st.query_params.get('session')
+        if token:
+            usuario = verificar_sesion(token)
+            if usuario:
+                st.session_state.logged_in = True
+                st.session_state.usuario = usuario
+                st.session_state.es_admin = usuario['es_admin']
+                st.session_state.session_token = token
+                
+                if not usuario['es_admin'] and usuario['equipo_id']:
+                    st.session_state.equipo_id = usuario['equipo_id']
+                    equipos = cargar_equipos()
+                    equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                    if not equipo_info.empty:
+                        st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
     
     # Sidebar y navegación (ahora siempre visible)
     pagina = sidebar_contexto()
