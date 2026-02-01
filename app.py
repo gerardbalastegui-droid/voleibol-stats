@@ -2570,8 +2570,8 @@ def crear_grafico_distribucion_colocador(df_dist):
     # Crear la cuadrícula del campo
     for fila_idx, fila in enumerate(zonas_campo):
         for col_idx, zona in enumerate(fila):
-            x_pos = col_idx * 1.8  # Más espaciado horizontal
-            y_pos = (1 - fila_idx) * 1.4  # Más espaciado vertical
+            x_pos = col_idx * 1.5
+            y_pos = (1 - fila_idx) * 1.2
             
             # Obtener datos de la zona
             if zona in datos_zona:
@@ -2588,23 +2588,23 @@ def crear_grafico_distribucion_colocador(df_dist):
             # Añadir rectángulo de zona - FONDO BLANCO
             fig.add_shape(
                 type="rect",
-                x0=x_pos - 0.75, y0=y_pos - 0.55,
-                x1=x_pos + 0.75, y1=y_pos + 0.55,
+                x0=x_pos - 0.65, y0=y_pos - 0.5,
+                x1=x_pos + 0.65, y1=y_pos + 0.5,
                 fillcolor=COLOR_BLANCO,
                 line=dict(color=COLOR_NEGRO, width=2),
             )
             
             # Texto de la zona
             fig.add_annotation(
-                x=x_pos, y=y_pos + 0.32,
+                x=x_pos, y=y_pos + 0.28,
                 text=f"<b>{zona}</b>",
                 showarrow=False,
-                font=dict(size=14, color=COLOR_NEGRO)
+                font=dict(size=12, color=COLOR_NEGRO)
             )
             
             # Porcentaje grande
             fig.add_annotation(
-                x=x_pos, y=y_pos + 0.05,
+                x=x_pos, y=y_pos,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
                 font=dict(size=18, color=COLOR_ROJO)
@@ -2612,38 +2612,39 @@ def crear_grafico_distribucion_colocador(df_dist):
             
             # Eficacia y puntos pequeños
             fig.add_annotation(
-                x=x_pos, y=y_pos - 0.25,
-                text=f"Ef: {efic}% | # {int(puntos)}",
+                x=x_pos, y=y_pos - 0.3,
+                text=f"Ef:{efic}% #{int(puntos)}",
                 showarrow=False,
-                font=dict(size=9, color=COLOR_NEGRO)
+                font=dict(size=8, color=COLOR_NEGRO)
             )
     
-    # Añadir indicador de red - ARRIBA DE TODO
+    # Añadir indicador de red - ARRIBA DE TODO (ajustado)
     fig.add_shape(
         type="line",
-        x0=-0.8, y0=2.0,
-        x1=3.8, y1=2.0,
+        x0=-0.8, y0=1.85,
+        x1=3.8, y1=1.85,
         line=dict(color=COLOR_NEGRO, width=4, dash="solid"),
     )
     
     fig.add_annotation(
-        x=1.5, y=2.2,
+        x=1.5, y=2.0,
         text="<b>XARXA</b>",
         showarrow=False,
-        font=dict(size=12, color=COLOR_NEGRO)
+        font=dict(size=10, color=COLOR_NEGRO)
     )
     
     fig.update_layout(
         title="Distribució del Col·locador per Zona",
         xaxis=dict(visible=False, range=[-1, 4]),
-        yaxis=dict(visible=False, range=[-0.8, 2.5], scaleanchor="x"),
-        height=450,
+        yaxis=dict(visible=False, range=[-0.7, 2.2], scaleanchor="x"),
+        height=400,
         showlegend=False,
-        plot_bgcolor='white'
+        plot_bgcolor='white',
+        margin=dict(l=10, r=10, t=40, b=10)
     )
     
     return fig
-
+        
 def crear_mini_grafico_rotacion(df_rotacion, rotacion):
     """Crea mini visualización de distribución para una rotación específica"""
     
@@ -3773,10 +3774,10 @@ def pagina_partido():
                     overflow-x: auto;
                     -webkit-overflow-scrolling: touch;
                     margin-bottom: 1rem;
+                    max-width: 100%;
                 }
                 .tabla-jugadores-set {
-                    width: 100%;
-                    min-width: 800px;
+                    min-width: 900px;
                     border-collapse: collapse;
                     font-size: 0.75rem;
                 }
@@ -3809,7 +3810,7 @@ def pagina_partido():
                 
                 # Header de acciones
                 html += '<tr>'
-                html += '<th rowspan="2">Jugador</th>'
+                html += '<th rowspan="2" class="jugador-col">Jugador</th>'
                 html += '<th colspan="8" class="header-accion">Atac</th>'
                 html += '<th colspan="8" class="header-accion">Recepció</th>'
                 html += '<th colspan="8" class="header-accion">Saque</th>'
