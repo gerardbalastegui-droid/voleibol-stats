@@ -6873,11 +6873,6 @@ def main():
                     equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
                     if not equipo_info.empty:
                         st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
-
-    # Meta tag para Google AdSense
-    st.markdown("""
-        <meta name="google-adsense-account" content="ca-pub-9729217104813447">
-    """, unsafe_allow_html=True)
     
     # Sidebar y navegación (ahora siempre visible)
     pagina = sidebar_contexto()
