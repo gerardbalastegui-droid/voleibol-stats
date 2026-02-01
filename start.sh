@@ -30,11 +30,17 @@ http {
 }
 EOF
 
-# Iniciar Streamlit en segundo plano
-streamlit run app.py --server.port=8501 --server.address=127.0.0.1 &
+echo "Iniciando Streamlit..."
 
-# Esperar a que Streamlit arranque
-sleep 5
+# Iniciar Streamlit en segundo plano
+streamlit run app.py --server.port=8501 --server.address=127.0.0.1 --server.headless=true &
+
+echo "Esperando a que Streamlit arranque..."
+
+# Esperar a que Streamlit esté listo
+sleep 15
+
+echo "Iniciando nginx..."
 
 # Iniciar nginx
 nginx -g 'daemon off;'
