@@ -3767,50 +3767,58 @@ def pagina_partido():
                 
                 df_tabla = pd.DataFrame(data_rows)
                 
-                # Crear tabla con headers multinivel usando HTML
+                # Tabla con scroll horizontal
                 st.markdown("""
                 <style>
-                .tabla-container {
-                    overflow-x: auto;
+                .scroll-table-container {
+                    width: 100%;
+                    overflow-x: scroll !important;
                     -webkit-overflow-scrolling: touch;
+                    display: block;
                     margin-bottom: 1rem;
-                    max-width: 100%;
                 }
-                .tabla-jugadores-set {
-                    min-width: 900px;
+                .scroll-table {
+                    min-width: 1000px;
                     border-collapse: collapse;
-                    font-size: 0.75rem;
+                    font-size: 12px;
+                    width: max-content;
                 }
-                .tabla-jugadores-set th, .tabla-jugadores-set td {
+                .scroll-table th, .scroll-table td {
                     border: 1px solid #ddd;
-                    padding: 4px 6px;
+                    padding: 6px 8px;
                     text-align: center;
                     white-space: nowrap;
                 }
-                .tabla-jugadores-set th {
+                .scroll-table th {
                     background-color: #f5f5f5;
+                    position: sticky;
+                    top: 0;
                 }
-                .tabla-jugadores-set .header-accion {
+                .scroll-table .header-accion {
                     background-color: #D32F2F;
                     color: white;
                 }
-                .tabla-jugadores-set .jugador-col {
+                .scroll-table .jugador-cell {
                     text-align: left;
                     font-weight: bold;
+                    background-color: white;
                     position: sticky;
                     left: 0;
-                    background-color: white;
                     z-index: 1;
+                    border-right: 2px solid #D32F2F;
+                }
+                .scroll-table th.jugador-cell {
+                    z-index: 2;
                 }
                 </style>
                 """, unsafe_allow_html=True)
                 
-                # Construir tabla HTML con container scrolleable
-                html = '<div class="tabla-container"><table class="tabla-jugadores-set">'
+                # Construir tabla HTML
+                html = '<div class="scroll-table-container"><table class="scroll-table">'
                 
                 # Header de acciones
                 html += '<tr>'
-                html += '<th rowspan="2" class="jugador-col">Jugador</th>'
+                html += '<th rowspan="2" class="jugador-cell">Jugador</th>'
                 html += '<th colspan="8" class="header-accion">Atac</th>'
                 html += '<th colspan="8" class="header-accion">Recepció</th>'
                 html += '<th colspan="8" class="header-accion">Saque</th>'
@@ -3826,7 +3834,7 @@ def pagina_partido():
                 # Filas de datos
                 for _, row in df_tabla.iterrows():
                     html += '<tr>'
-                    html += f'<td class="jugador-col">{row["Jugador"]}</td>'
+                    html += f'<td class="jugador-cell">{row["Jugador"]}</td>'
                     
                     for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
                         for col in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
