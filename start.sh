@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Limpiar variable que interfiere
-unset STREAMLIT_SERVER_PORT
-
 # Crear config de nginx con el puerto correcto
 cat > /etc/nginx/nginx.conf << EOF
 events {
@@ -32,15 +29,11 @@ EOF
 
 echo "Iniciando Streamlit..."
 
-# Iniciar Streamlit en segundo plano
-streamlit run app.py --server.port=8501 --server.address=127.0.0.1 --server.headless=true &
+# Iniciar Streamlit forzando el puerto con la variable de entorno
+STREAMLIT_SERVER_PORT=8501 STREAMLIT_SERVER_ADDRESS=127.0.0.1 STREAMLIT_SERVER_HEADLESS=true streamlit run app.py &
 
 echo "Esperando a que Streamlit arranque..."
-
-# Esperar a que Streamlit esté listo
 sleep 15
 
 echo "Iniciando nginx..."
-
-# Iniciar nginx
 nginx -g 'daemon off;'
