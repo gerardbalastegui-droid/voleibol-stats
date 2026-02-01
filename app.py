@@ -6835,6 +6835,17 @@ def sidebar_contexto():
         label_visibility="collapsed"
     )
 
+    # Botón de donación Ko-fi
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("""
+    <div style="text-align: center;">
+        <a href="https://ko-fi.com/gerardbalastegui" target="_blank">
+            <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee" style="height: 40px;">
+        </a>
+        <p style="font-size: 0.75rem; color: #888; margin-top: 0.5rem;">Si t'agrada l'app, convida'm a un cafè ☕</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     # Footer con marca personal
     st.sidebar.markdown("---")
     st.sidebar.markdown("""
