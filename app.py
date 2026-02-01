@@ -2570,8 +2570,8 @@ def crear_grafico_distribucion_colocador(df_dist):
     # Crear la cuadrícula del campo
     for fila_idx, fila in enumerate(zonas_campo):
         for col_idx, zona in enumerate(fila):
-            x_pos = col_idx * 1.5  # Más espaciado horizontal
-            y_pos = (1 - fila_idx) * 1.2  # Más espaciado vertical
+            x_pos = col_idx * 1.8  # Más espaciado horizontal
+            y_pos = (1 - fila_idx) * 1.4  # Más espaciado vertical
             
             # Obtener datos de la zona
             if zona in datos_zona:
@@ -2588,8 +2588,8 @@ def crear_grafico_distribucion_colocador(df_dist):
             # Añadir rectángulo de zona - FONDO BLANCO
             fig.add_shape(
                 type="rect",
-                x0=x_pos - 0.65, y0=y_pos - 0.5,
-                x1=x_pos + 0.65, y1=y_pos + 0.5,
+                x0=x_pos - 0.75, y0=y_pos - 0.55,
+                x1=x_pos + 0.75, y1=y_pos + 0.55,
                 fillcolor=COLOR_BLANCO,
                 line=dict(color=COLOR_NEGRO, width=2),
             )
@@ -2607,15 +2607,15 @@ def crear_grafico_distribucion_colocador(df_dist):
                 x=x_pos, y=y_pos + 0.05,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
-                font=dict(size=22, color=COLOR_ROJO)
+                font=dict(size=18, color=COLOR_ROJO)
             )
             
             # Eficacia y puntos pequeños
             fig.add_annotation(
                 x=x_pos, y=y_pos - 0.25,
-                text=f"Efic: {efic}% | # {int(puntos)}",
+                text=f"Ef: {efic}% | # {int(puntos)}",
                 showarrow=False,
-                font=dict(size=10, color=COLOR_NEGRO)
+                font=dict(size=9, color=COLOR_NEGRO)
             )
     
     # Añadir indicador de red - ARRIBA DE TODO
@@ -3769,18 +3769,25 @@ def pagina_partido():
                 # Crear tabla con headers multinivel usando HTML
                 st.markdown("""
                 <style>
+                .tabla-container {
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                    margin-bottom: 1rem;
+                }
                 .tabla-jugadores-set {
                     width: 100%;
+                    min-width: 800px;
                     border-collapse: collapse;
-                    font-size: 0.85rem;
+                    font-size: 0.75rem;
                 }
                 .tabla-jugadores-set th, .tabla-jugadores-set td {
                     border: 1px solid #ddd;
-                    padding: 4px 8px;
+                    padding: 4px 6px;
                     text-align: center;
+                    white-space: nowrap;
                 }
                 .tabla-jugadores-set th {
-                    background-color: #D32F2F;
+                    background-color: #f5f5f5;
                 }
                 .tabla-jugadores-set .header-accion {
                     background-color: #D32F2F;
@@ -3789,12 +3796,16 @@ def pagina_partido():
                 .tabla-jugadores-set .jugador-col {
                     text-align: left;
                     font-weight: bold;
+                    position: sticky;
+                    left: 0;
+                    background-color: white;
+                    z-index: 1;
                 }
                 </style>
                 """, unsafe_allow_html=True)
                 
-                # Construir tabla HTML
-                html = '<table class="tabla-jugadores-set">'
+                # Construir tabla HTML con container scrolleable
+                html = '<div class="tabla-container"><table class="tabla-jugadores-set">'
                 
                 # Header de acciones
                 html += '<tr>'
@@ -3823,7 +3834,7 @@ def pagina_partido():
                     
                     html += '</tr>'
                 
-                html += '</table>'
+                html += '</table></div>'
                 
                 st.markdown(html, unsafe_allow_html=True)
             else:
