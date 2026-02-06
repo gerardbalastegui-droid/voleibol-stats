@@ -3300,31 +3300,30 @@ def pagina_partido():
                 if max_zona['porcentaje'] > 40:
                     st.warning("⚠️ Alta dependència d'una zona. Considera diversificar la distribució.")
                 
-                # === DISTRIBUCIÓN POR ROTACIÓN ===
-                st.markdown("---")
-                st.markdown("##### 🔄 Distribució per Rotació")
-                
-                df_dist_rotacion = obtener_distribucion_por_rotacion(partido_ids)
-                
-                if not df_dist_rotacion.empty:
-                    # Obtener rotaciones únicas
-                    rotaciones = sorted(df_dist_rotacion['rotacion'].unique())
-                    
-                    # Mostrar rotaciones en filas de 2
-                    for fila in range(0, 6, 2):
-                        cols = st.columns(2)
-                        for col_idx, col in enumerate(cols):
-                            rot_num = fila + col_idx + 1  # R1, R2, R3, R4, R5, R6
-                            rotacion_key = f"p{rot_num}"
-                            df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion_key] if not df_rot_set.empty else pd.DataFrame()
+                # === DISTRIBUCIÓ PER ROTACIÓ ===
+            st.markdown("---")
+            st.markdown("##### 🔄 Distribució per Rotació")
+            
+            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, int(set_seleccionado))
+            
+            if not df_rot_set.empty:
+                # Mostrar rotaciones en filas de 2
+                for fila in range(0, 6, 2):
+                    cols = st.columns(2)
+                    for col_idx, col in enumerate(cols):
+                        rot_num = fila + col_idx + 1
+                        rotacion_key = f"p{rot_num}"
+                        df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion_key]
                         
-                            with col:
-                                if not df_rot.empty:
-                                    fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion_key)
-                                    st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
-                                else:
-                                    st.markdown(f"**Rotació {rotacion_key}**")
-                                    st.info("Sense dades")
+                        with col:
+                            if not df_rot.empty:
+                                fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion_key)
+                                st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+                            else:
+                                st.markdown(f"**Rotació {rotacion_key}**")
+                                st.info("Sense dades")
+            else:
+                st.info("No hi ha dades de rotació per aquest set")
                     
                     # Tabla resumen por rotación
                     with st.expander("📋 Taula resum per rotació"):
@@ -3733,12 +3732,12 @@ def pagina_partido():
             
             # === DETALL PER JUGADOR ===
             st.markdown("---")
-            st.markdown("##### 👥 Detall per Jugador" + (" (Agregat)" if es_multiple else ""))
+            st.markdown("##### 👥 Detall per Jugador")
             
             df_jugadores_set = obtener_estadisticas_jugadores_por_set(partido_ids, int(set_seleccionado))
             
             if not df_jugadores_set.empty:
-                # Pivotar datos para crear tabla como la de "Detall per Acció"
+                # Pivotar datos
                 jugadores_unicos = df_jugadores_set['jugador'].unique()
                 acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
                 
@@ -3761,139 +3760,30 @@ def pagina_partido():
                             prefix = 'Bloc'
                         
                         if not df_acc.empty:
-                            row[f'{prefix}_#'] = int(df_acc['puntos'].iloc[0])
-                            row[f'{prefix}_+'] = int(df_acc['positivos'].iloc[0])
-                            row[f'{prefix}_!'] = int(df_acc['neutros'].iloc[0])
-                            row[f'{prefix}_-'] = int(df_acc['negativos'].iloc[0])
-                            row[f'{prefix}_/'] = int(df_acc['errores_forzados'].iloc[0])
-                            row[f'{prefix}_='] = int(df_acc['errores'].iloc[0])
-                            row[f'{prefix}_Efc'] = df_acc['eficacia'].iloc[0]
-                            row[f'{prefix}_Efn'] = df_acc['eficiencia'].iloc[0]
+                            row[f'{prefix} #'] = int(df_acc['puntos'].iloc[0])
+                            row[f'{prefix} +'] = int(df_acc['positivos'].iloc[0])
+                            row[f'{prefix} !'] = int(df_acc['neutros'].iloc[0])
+                            row[f'{prefix} -'] = int(df_acc['negativos'].iloc[0])
+                            row[f'{prefix} /'] = int(df_acc['errores_forzados'].iloc[0])
+                            row[f'{prefix} ='] = int(df_acc['errores'].iloc[0])
+                            row[f'{prefix} Efc'] = df_acc['eficacia'].iloc[0]
+                            row[f'{prefix} Efn'] = df_acc['eficiencia'].iloc[0]
                         else:
-                            row[f'{prefix}_#'] = ''
-                            row[f'{prefix}_+'] = ''
-                            row[f'{prefix}_!'] = ''
-                            row[f'{prefix}_-'] = ''
-                            row[f'{prefix}_/'] = ''
-                            row[f'{prefix}_='] = ''
-                            row[f'{prefix}_Efc'] = ''
-                            row[f'{prefix}_Efn'] = ''
+                            row[f'{prefix} #'] = None
+                            row[f'{prefix} +'] = None
+                            row[f'{prefix} !'] = None
+                            row[f'{prefix} -'] = None
+                            row[f'{prefix} /'] = None
+                            row[f'{prefix} ='] = None
+                            row[f'{prefix} Efc'] = None
+                            row[f'{prefix} Efn'] = None
                     
                     data_rows.append(row)
                 
                 df_tabla = pd.DataFrame(data_rows)
                 
-                # Tabla con scroll horizontal
-                st.markdown("""
-                <style>
-                .scroll-table-container {
-                    width: 100%;
-                    overflow-x: scroll !important;
-                    -webkit-overflow-scrolling: touch;
-                    display: block;
-                    margin-bottom: 1rem;
-                }
-                .scroll-table {
-                    min-width: 1000px;
-                    border-collapse: collapse;
-                    font-size: 12px;
-                    width: max-content;
-                }
-                .scroll-table th, .scroll-table td {
-                    border: 1px solid #ddd;
-                    padding: 6px 8px;
-                    text-align: center;
-                    white-space: nowrap;
-                }
-                .scroll-table th {
-                    background-color: #f5f5f5;
-                    position: sticky;
-                    top: 0;
-                }
-                .scroll-table .header-accion {
-                    background-color: #D32F2F;
-                    color: white;
-                }
-                .scroll-table .jugador-cell {
-                    text-align: left;
-                    font-weight: bold;
-                    background-color: white;
-                    position: sticky;
-                    left: 0;
-                    z-index: 1;
-                    border-right: 2px solid #D32F2F;
-                }
-                .scroll-table th.jugador-cell {
-                    z-index: 2;
-                }
-                </style>
-                """, unsafe_allow_html=True)
-                
-                # Construir tabla HTML
-                tabla_html = '''
-                <html>
-                <head>
-                <style>
-                body { margin: 0; padding: 0; font-family: sans-serif; }
-                .tabla {
-                    border-collapse: collapse;
-                    font-size: 12px;
-                }
-                .tabla th, .tabla td {
-                    border: 1px solid #ddd;
-                    padding: 6px 8px;
-                    text-align: center;
-                    white-space: nowrap;
-                }
-                .tabla th { background-color: #f5f5f5; }
-                .tabla .header-accion { background-color: #D32F2F; color: white; }
-                .tabla .jugador-cell { 
-                    text-align: left; 
-                    font-weight: bold; 
-                    background: white;
-                    position: sticky;
-                    left: 0;
-                }
-                </style>
-                </head>
-                <body>
-                <table class="tabla">
-                '''
-                
-                # Header de acciones
-                tabla_html += '<tr>'
-                tabla_html += '<th rowspan="2" class="jugador-cell">Jugador</th>'
-                tabla_html += '<th colspan="8" class="header-accion">Atac</th>'
-                tabla_html += '<th colspan="8" class="header-accion">Recepció</th>'
-                tabla_html += '<th colspan="8" class="header-accion">Saque</th>'
-                tabla_html += '<th colspan="8" class="header-accion">Bloqueig</th>'
-                tabla_html += '</tr>'
-                
-                # Header de columnas
-                tabla_html += '<tr>'
-                for _ in range(4):
-                    tabla_html += '<th>#</th><th>+</th><th>!</th><th>-</th><th>/</th><th>=</th><th>Efc</th><th>Efn</th>'
-                tabla_html += '</tr>'
-                
-                # Filas de datos
-                for _, row in df_tabla.iterrows():
-                    tabla_html += '<tr>'
-                    tabla_html += f'<td class="jugador-cell">{row["Jugador"]}</td>'
-                    
-                    for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
-                        for col in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
-                            val = row[f'{prefix}_{col}']
-                            tabla_html += f'<td>{val}</td>'
-                    
-                    tabla_html += '</tr>'
-                
-                tabla_html += '</table></body></html>'
-                
-                # Mostrar con iframe scrolleable
-                import streamlit.components.v1 as components
-                components.html(tabla_html, height=400, scrolling=True)
-                
-                st.markdown(html, unsafe_allow_html=True)
+                # Usar st.dataframe con scroll
+                st.dataframe(df_tabla, use_container_width=True, hide_index=True, height=400)
             else:
                 st.info("No hi ha dades de jugadors per aquest set")
             
