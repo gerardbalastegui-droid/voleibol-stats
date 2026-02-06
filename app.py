@@ -3168,50 +3168,27 @@ def pagina_partido():
                     
                     if not df_acc.empty:
                         row = df_acc.iloc[0]
-                        fila[f'{nombre} #'] = int(row['puntos'])
-                        fila[f'{nombre} +'] = int(row['positivos'])
-                        fila[f'{nombre} !'] = int(row['neutros'])
-                        fila[f'{nombre} -'] = int(row['negativos'])
-                        fila[f'{nombre} /'] = int(row['errores_forzados'])
-                        fila[f'{nombre} ='] = int(row['errores'])
-                        fila[f'{nombre} Efc'] = row['eficacia']
-                        fila[f'{nombre} Efn'] = row['eficiencia']
+                        fila[f'{nombre} #'] = str(int(row['puntos']))
+                        fila[f'{nombre} +'] = str(int(row['positivos']))
+                        fila[f'{nombre} !'] = str(int(row['neutros']))
+                        fila[f'{nombre} -'] = str(int(row['negativos']))
+                        fila[f'{nombre} /'] = str(int(row['errores_forzados']))
+                        fila[f'{nombre} ='] = str(int(row['errores']))
+                        fila[f'{nombre} Efc'] = f"{row['eficacia']}%"
+                        fila[f'{nombre} Efn'] = f"{row['eficiencia']}%"
                     else:
-                        fila[f'{nombre} #'] = None
-                        fila[f'{nombre} +'] = None
-                        fila[f'{nombre} !'] = None
-                        fila[f'{nombre} -'] = None
-                        fila[f'{nombre} /'] = None
-                        fila[f'{nombre} ='] = None
-                        fila[f'{nombre} Efc'] = None
-                        fila[f'{nombre} Efn'] = None
+                        fila[f'{nombre} #'] = "-"
+                        fila[f'{nombre} +'] = "-"
+                        fila[f'{nombre} !'] = "-"
+                        fila[f'{nombre} -'] = "-"
+                        fila[f'{nombre} /'] = "-"
+                        fila[f'{nombre} ='] = "-"
+                        fila[f'{nombre} Efc'] = "-"
+                        fila[f'{nombre} Efn'] = "-"
                 
                 tabla_data.append(fila)
             
             df_tabla_jugadores = pd.DataFrame(tabla_data)
-            
-            # Convertir columnas numéricas a enteros (sin decimales)
-            for nombre in ['Atac', 'Recep', 'Saque', 'Bloc']:
-                for simbolo in ['#', '+', '!', '-', '/', '=']:
-                    col = f'{nombre} {simbolo}'
-                    if col in df_tabla_jugadores.columns:
-                        df_tabla_jugadores[col] = df_tabla_jugadores[col].apply(
-                            lambda x: int(x) if pd.notna(x) and x != '' else None
-                        )
-            
-            # Formatear columnas de eficacia y eficiencia con %
-            for nombre in ['Atac', 'Recep', 'Saque', 'Bloc']:
-                if f'{nombre} Efc' in df_tabla_jugadores.columns:
-                    df_tabla_jugadores[f'{nombre} Efc'] = df_tabla_jugadores[f'{nombre} Efc'].apply(
-                        lambda x: f"{x}%" if pd.notna(x) and x != '' else None
-                    )
-                if f'{nombre} Efn' in df_tabla_jugadores.columns:
-                    df_tabla_jugadores[f'{nombre} Efn'] = df_tabla_jugadores[f'{nombre} Efn'].apply(
-                        lambda x: f"{x}%" if pd.notna(x) and x != '' else None
-                    )
-            
-            # Reemplazar None por "-"
-            df_tabla_jugadores = df_tabla_jugadores.fillna("-")
             
             # Mostrar con st.dataframe (scrolleable)
             st.dataframe(
