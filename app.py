@@ -3304,7 +3304,7 @@ def pagina_partido():
             st.markdown("---")
             st.markdown("##### 🔄 Distribució per Rotació")
             
-            df_rot_set = obtener_distribucion_por_rotacion_set(partido_ids, int(set_seleccionado))
+            df_rot_set = obtener_distribucion_por_rotacion(partido_ids)
             
             if not df_rot_set.empty:
                 # Mostrar rotaciones en filas de 2
