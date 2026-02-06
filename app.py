@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sqlalchemy import create_engine, text
+import streamlit.components.v1 as components
 from datetime import date
 import bcrypt
 import os
@@ -878,6 +879,7 @@ def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
+                COUNT(*) FILTER (WHERE marca = '=') as errores
             FROM acciones_ordenadas
             WHERE tipo_accion = 'atacar'
             AND accion_previa = 'colocación'
@@ -999,6 +1001,7 @@ def obtener_distribucion_por_rotacion(partido_ids):
                 COUNT(*) as colocaciones,
                 ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
                 COUNT(*) FILTER (WHERE marca = '#') as puntos
+                COUNT(*) FILTER (WHERE marca = '=') as errores
             FROM acciones_ordenadas
             WHERE tipo_accion = 'atacar'
             AND accion_previa = 'colocación'
@@ -2655,11 +2658,19 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
     for _, row in df_rotacion.iterrows():
         zona = row['zona'].upper() if row['zona'] else 'N/A'
         pct = round((row['colocaciones'] / total_ataques * 100), 1) if total_ataques > 0 else 0
+        
+        # Calcular eficiencia: (puntos - errores) / total
+        puntos = row['puntos'] if 'puntos' in row else 0
+        errores = row['errores'] if 'errores' in row else 0
+        total = row['colocaciones'] if row['colocaciones'] > 0 else 1
+        eficiencia = round(((puntos - errores) / total) * 100, 1)
+        
         datos_zona[zona] = {
             'colocaciones': row['colocaciones'],
             'porcentaje': pct,
             'eficacia': row['eficacia'],
-            'puntos': row['puntos'] if 'puntos' in row else 0
+            'puntos': puntos,
+            'eficiencia': eficiencia
         }
     
     # Orden del campo: P4 P3 P2 (arriba), P5 P6 P1 (abajo)
@@ -2681,10 +2692,12 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
                 pct = datos_zona[zona]['porcentaje']
                 efic = datos_zona[zona]['eficacia']
                 puntos = datos_zona[zona]['puntos']
+                eficiencia = datos_zona[zona]['eficiencia']
             else:
                 pct = 0
                 efic = 0
                 puntos = 0
+                eficiencia = 0
             
             # Color de fondo según porcentaje
             if pct >= 30:
@@ -2705,7 +2718,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
             
             # Texto de la zona
             fig.add_annotation(
-                x=x_pos, y=y_pos + 0.2,
+                x=x_pos, y=y_pos + 0.22,
                 text=f"<b>{zona}</b>",
                 showarrow=False,
                 font=dict(size=10, color=COLOR_NEGRO)
@@ -2713,16 +2726,16 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
             
             # Porcentaje
             fig.add_annotation(
-                x=x_pos, y=y_pos - 0.05,
+                x=x_pos, y=y_pos,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
-                font=dict(size=14, color=COLOR_ROJO)
+                font=dict(size=16, color=COLOR_ROJO)
             )
             
-            # Puntos
+            # Puntos y eficiencia
             fig.add_annotation(
-                x=x_pos, y=y_pos - 0.28,
-                text=f"# {int(puntos)}",
+                x=x_pos, y=y_pos - 0.25,
+                text=f"#{int(puntos)} ({eficiencia}%)",
                 showarrow=False,
                 font=dict(size=9, color=COLOR_NEGRO)
             )
@@ -2731,7 +2744,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
         title=f"Rotació {rotacion} ({total_ataques} atacs)",
         xaxis=dict(visible=False, range=[-0.8, 3.2]),
         yaxis=dict(visible=False, range=[-0.6, 1.5], scaleanchor="x"),
-        height=300,
+        height=220,
         margin=dict(l=5, r=5, t=35, b=5),
         showlegend=False,
         plot_bgcolor='white'
@@ -3297,18 +3310,21 @@ def pagina_partido():
                     # Obtener rotaciones únicas
                     rotaciones = sorted(df_dist_rotacion['rotacion'].unique())
                     
-                    # Crear 2 filas de 3 columnas
-                    for fila in range(0, len(rotaciones), 3):
+                    # Mostrar rotaciones en filas de 2
+                    for fila in range(0, 6, 2):
                         cols = st.columns(2)
                         for col_idx, col in enumerate(cols):
-                            rot_idx = fila + col_idx
-                            if rot_idx < len(rotaciones):
-                                rotacion = rotaciones[rot_idx]
-                                df_rot = df_dist_rotacion[df_dist_rotacion['rotacion'] == rotacion]
-                                
-                                with col:
-                                    fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion)
+                            rot_num = fila + col_idx + 1  # R1, R2, R3, R4, R5, R6
+                            rotacion_key = f"p{rot_num}"
+                            df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion_key] if not df_rot_set.empty else pd.DataFrame()
+                        
+                            with col:
+                                if not df_rot.empty:
+                                    fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion_key)
                                     st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+                                else:
+                                    st.markdown(f"**Rotació {rotacion_key}**")
+                                    st.info("Sense dades")
                     
                     # Tabla resumen por rotación
                     with st.expander("📋 Taula resum per rotació"):
@@ -3814,36 +3830,68 @@ def pagina_partido():
                 """, unsafe_allow_html=True)
                 
                 # Construir tabla HTML
-                html = '<div class="scroll-table-container"><table class="scroll-table">'
+                tabla_html = '''
+                <html>
+                <head>
+                <style>
+                body { margin: 0; padding: 0; font-family: sans-serif; }
+                .tabla {
+                    border-collapse: collapse;
+                    font-size: 12px;
+                }
+                .tabla th, .tabla td {
+                    border: 1px solid #ddd;
+                    padding: 6px 8px;
+                    text-align: center;
+                    white-space: nowrap;
+                }
+                .tabla th { background-color: #f5f5f5; }
+                .tabla .header-accion { background-color: #D32F2F; color: white; }
+                .tabla .jugador-cell { 
+                    text-align: left; 
+                    font-weight: bold; 
+                    background: white;
+                    position: sticky;
+                    left: 0;
+                }
+                </style>
+                </head>
+                <body>
+                <table class="tabla">
+                '''
                 
                 # Header de acciones
-                html += '<tr>'
-                html += '<th rowspan="2" class="jugador-cell">Jugador</th>'
-                html += '<th colspan="8" class="header-accion">Atac</th>'
-                html += '<th colspan="8" class="header-accion">Recepció</th>'
-                html += '<th colspan="8" class="header-accion">Saque</th>'
-                html += '<th colspan="8" class="header-accion">Bloqueig</th>'
-                html += '</tr>'
+                tabla_html += '<tr>'
+                tabla_html += '<th rowspan="2" class="jugador-cell">Jugador</th>'
+                tabla_html += '<th colspan="8" class="header-accion">Atac</th>'
+                tabla_html += '<th colspan="8" class="header-accion">Recepció</th>'
+                tabla_html += '<th colspan="8" class="header-accion">Saque</th>'
+                tabla_html += '<th colspan="8" class="header-accion">Bloqueig</th>'
+                tabla_html += '</tr>'
                 
                 # Header de columnas
-                html += '<tr>'
+                tabla_html += '<tr>'
                 for _ in range(4):
-                    html += '<th>#</th><th>+</th><th>!</th><th>-</th><th>/</th><th>=</th><th>Efc</th><th>Efn</th>'
-                html += '</tr>'
+                    tabla_html += '<th>#</th><th>+</th><th>!</th><th>-</th><th>/</th><th>=</th><th>Efc</th><th>Efn</th>'
+                tabla_html += '</tr>'
                 
                 # Filas de datos
                 for _, row in df_tabla.iterrows():
-                    html += '<tr>'
-                    html += f'<td class="jugador-cell">{row["Jugador"]}</td>'
+                    tabla_html += '<tr>'
+                    tabla_html += f'<td class="jugador-cell">{row["Jugador"]}</td>'
                     
                     for prefix in ['Atac', 'Recep', 'Saque', 'Bloc']:
                         for col in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
                             val = row[f'{prefix}_{col}']
-                            html += f'<td>{val}</td>'
+                            tabla_html += f'<td>{val}</td>'
                     
-                    html += '</tr>'
+                    tabla_html += '</tr>'
                 
-                html += '</table></div>'
+                tabla_html += '</table></body></html>'
+                
+                # Mostrar con iframe scrolleable
+                import streamlit.components.v1 as components
+                components.html(tabla_html, height=400, scrolling=True)
                 
                 st.markdown(html, unsafe_allow_html=True)
             else:
