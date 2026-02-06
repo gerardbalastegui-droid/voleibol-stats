@@ -2744,7 +2744,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
         title=f"Rotació {rotacion} ({total_ataques} atacs)",
         xaxis=dict(visible=False, range=[-0.8, 3.2]),
         yaxis=dict(visible=False, range=[-0.6, 1.5], scaleanchor="x"),
-        height=220,
+        height=280,
         margin=dict(l=5, r=5, t=35, b=5),
         showlegend=False,
         plot_bgcolor='white'
@@ -3281,21 +3281,17 @@ def pagina_partido():
             df_rot_set = obtener_distribucion_por_rotacion(partido_ids)
             
             if not df_rot_set.empty:
-                # Mostrar rotaciones en filas de 2
-                for fila in range(0, 6, 2):
-                    cols = st.columns(2)
-                    for col_idx, col in enumerate(cols):
-                        rot_num = fila + col_idx + 1
-                        rotacion_key = f"p{rot_num}"
-                        df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion_key]
-                        
-                        with col:
-                            if not df_rot.empty:
-                                fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion_key)
-                                st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
-                            else:
-                                st.markdown(f"**Rotació {rotacion_key}**")
-                                st.info("Sense dades")
+                # Mostrar rotaciones - 1 por fila para mejor visualización en móvil
+                for rot_num in range(1, 7):
+                    rotacion_key = f"p{rot_num}"
+                    df_rot = df_rot_set[df_rot_set['rotacion'] == rotacion_key]
+                    
+                    if not df_rot.empty:
+                        fig_rot = crear_mini_grafico_rotacion(df_rot, rotacion_key)
+                        st.plotly_chart(fig_rot, use_container_width=True, config={'staticPlot': True})
+                    else:
+                        st.markdown(f"**Rotació {rotacion_key}**")
+                        st.info("Sense dades")
                 
                 # Tabla resumen por rotación
                 with st.expander("📋 Taula resum per rotació"):
@@ -6793,6 +6789,33 @@ def sidebar_contexto():
 # =============================================================================
 
 def main():
+
+    # CSS para mejorar móvil
+    st.markdown("""
+    <style>
+    /* Sidebar más estrecha en móvil */
+    @media (max-width: 768px) {
+        [data-testid="stSidebar"] {
+            min-width: 250px !important;
+            max-width: 250px !important;
+        }
+        
+        /* Reducir padding general */
+        .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+    }
+    
+    /* Gráficos más grandes en móvil */
+    @media (max-width: 768px) {
+        [data-testid="stPlotlyChart"] {
+            min-height: 300px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     """Función principal"""
     
     # Verificar si hay sesión guardada en query params
