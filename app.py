@@ -3190,6 +3190,20 @@ def pagina_partido():
             
             df_tabla_jugadores = pd.DataFrame(tabla_data)
             
+            # Formatear columnas de eficacia y eficiencia con %
+            for nombre in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                if f'{nombre} Efc' in df_tabla_jugadores.columns:
+                    df_tabla_jugadores[f'{nombre} Efc'] = df_tabla_jugadores[f'{nombre} Efc'].apply(
+                        lambda x: f"{x}%" if pd.notna(x) and x != '' else None
+                    )
+                if f'{nombre} Efn' in df_tabla_jugadores.columns:
+                    df_tabla_jugadores[f'{nombre} Efn'] = df_tabla_jugadores[f'{nombre} Efn'].apply(
+                        lambda x: f"{x}%" if pd.notna(x) and x != '' else None
+                    )
+            
+            # Reemplazar None por "-"
+            df_tabla_jugadores = df_tabla_jugadores.fillna("-")
+            
             # Mostrar con st.dataframe (scrolleable)
             st.dataframe(
                 df_tabla_jugadores,
