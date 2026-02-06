@@ -3152,7 +3152,7 @@ def pagina_partido():
         if not df_jugadores_stats.empty:
             # Pivotar para tener una fila por jugador con todas las acciones
             acciones = ['atacar', 'recepción', 'saque', 'bloqueo']
-            nombres_cat = {'atacar': 'Atac', 'recepción': 'Recepció', 'saque': 'Saque', 'bloqueo': 'Bloqueig'}
+            nombres_cat = {'atacar': 'Atac', 'recepción': 'Recep', 'saque': 'Saque', 'bloqueo': 'Bloc'}
             
             # Crear tabla pivotada
             jugadores_unicos = df_jugadores_stats['jugador'].unique()
@@ -3168,61 +3168,35 @@ def pagina_partido():
                     
                     if not df_acc.empty:
                         row = df_acc.iloc[0]
-                        fila[f'{nombre}_#'] = int(row['puntos'])
-                        fila[f'{nombre}_+'] = int(row['positivos'])
-                        fila[f'{nombre}_!'] = int(row['neutros'])
-                        fila[f'{nombre}_-'] = int(row['negativos'])
-                        fila[f'{nombre}_/'] = int(row['errores_forzados'])
-                        fila[f'{nombre}_='] = int(row['errores'])
-                        fila[f'{nombre}_Efc'] = row['eficacia']
-                        fila[f'{nombre}_Efn'] = row['eficiencia']
+                        fila[f'{nombre} #'] = int(row['puntos'])
+                        fila[f'{nombre} +'] = int(row['positivos'])
+                        fila[f'{nombre} !'] = int(row['neutros'])
+                        fila[f'{nombre} -'] = int(row['negativos'])
+                        fila[f'{nombre} /'] = int(row['errores_forzados'])
+                        fila[f'{nombre} ='] = int(row['errores'])
+                        fila[f'{nombre} Efc'] = row['eficacia']
+                        fila[f'{nombre} Efn'] = row['eficiencia']
                     else:
-                        fila[f'{nombre}_#'] = ''
-                        fila[f'{nombre}_+'] = ''
-                        fila[f'{nombre}_!'] = ''
-                        fila[f'{nombre}_-'] = ''
-                        fila[f'{nombre}_/'] = ''
-                        fila[f'{nombre}_='] = ''
-                        fila[f'{nombre}_Efc'] = ''
-                        fila[f'{nombre}_Efn'] = ''
+                        fila[f'{nombre} #'] = None
+                        fila[f'{nombre} +'] = None
+                        fila[f'{nombre} !'] = None
+                        fila[f'{nombre} -'] = None
+                        fila[f'{nombre} /'] = None
+                        fila[f'{nombre} ='] = None
+                        fila[f'{nombre} Efc'] = None
+                        fila[f'{nombre} Efn'] = None
                 
                 tabla_data.append(fila)
             
             df_tabla_jugadores = pd.DataFrame(tabla_data)
             
-            # Crear columnas multinivel
-            columnas_multinivel = [('', 'Jugador')]
-            for accion in ['Atac', 'Recepció', 'Saque', 'Bloqueig']:
-                for simbolo in ['#', '+', '!', '-', '/', '=', 'Efc', 'Efn']:
-                    columnas_multinivel.append((accion, simbolo))
-            
-            df_tabla_jugadores.columns = pd.MultiIndex.from_tuples(columnas_multinivel)
-            
-            # Mostrar con estilo HTML para encabezados multinivel
-            st.markdown(df_tabla_jugadores.to_html(index=False), unsafe_allow_html=True)
-            
-            # Añadir estilo CSS para la tabla
-            st.markdown("""
-            <style>
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                font-size: 12px;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 4px;
-                text-align: center;
-            }
-            th {
-                background-color: #C8102E;
-                color: white;
-            }
-            tr:nth-child(even) {
-                background-color: #f9f9f9;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+            # Mostrar con st.dataframe (scrolleable)
+            st.dataframe(
+                df_tabla_jugadores,
+                use_container_width=True,
+                hide_index=True,
+                height=400
+            )
         else:
             st.info("No hi ha dades de jugadors")
     
