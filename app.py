@@ -3322,29 +3322,25 @@ def pagina_partido():
                             else:
                                 st.markdown(f"**Rotació {rotacion_key}**")
                                 st.info("Sense dades")
+                
+                # Tabla resumen por rotación
+                with st.expander("📋 Taula resum per rotació"):
+                    df_resumen_rot = df_rot_set.groupby('rotacion').agg({
+                        'colocaciones': 'sum',
+                        'puntos': 'sum'
+                    }).reset_index()
+                    df_resumen_rot['eficacia'] = df_rot_set.groupby('rotacion').apply(
+                        lambda x: round((x['puntos'].sum() / x['colocaciones'].sum() * 100), 1) if x['colocaciones'].sum() > 0 else 0
+                    ).values
+                    df_resumen_rot = df_resumen_rot.rename(columns={
+                        'rotacion': 'Rotació',
+                        'colocaciones': 'Atacs',
+                        'puntos': 'Punts (#)',
+                        'eficacia': 'Eficàcia (%)'
+                    })
+                    st.dataframe(df_resumen_rot, use_container_width=True, hide_index=True)
             else:
                 st.info("No hi ha dades de rotació per aquest set")
-                    
-                    # Tabla resumen por rotación
-                    with st.expander("📋 Taula resum per rotació"):
-                        df_resumen_rot = df_dist_rotacion.groupby('rotacion').agg({
-                            'colocaciones': 'sum',
-                            'puntos': 'sum'
-                        }).reset_index()
-                        df_resumen_rot['eficacia'] = df_dist_rotacion.groupby('rotacion').apply(
-                            lambda x: round((x['puntos'].sum() / x['colocaciones'].sum() * 100), 1) if x['colocaciones'].sum() > 0 else 0
-                        ).values
-                        df_resumen_rot = df_resumen_rot.rename(columns={
-                            'rotacion': 'Rotació',
-                            'colocaciones': 'Atacs',
-                            'puntos': 'Punts (#)',
-                            'eficacia': 'Eficàcia (%)'
-                        })
-                        st.dataframe(df_resumen_rot, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No hi ha dades de rotació disponibles")
-            else:
-                st.info("No hi ha dades de distribució")
         
         with subtab2:
             st.markdown("""
