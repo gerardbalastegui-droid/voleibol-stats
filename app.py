@@ -3190,6 +3190,15 @@ def pagina_partido():
             
             df_tabla_jugadores = pd.DataFrame(tabla_data)
             
+            # Convertir columnas numéricas a enteros (sin decimales)
+            for nombre in ['Atac', 'Recep', 'Saque', 'Bloc']:
+                for simbolo in ['#', '+', '!', '-', '/', '=']:
+                    col = f'{nombre} {simbolo}'
+                    if col in df_tabla_jugadores.columns:
+                        df_tabla_jugadores[col] = df_tabla_jugadores[col].apply(
+                            lambda x: int(x) if pd.notna(x) and x != '' else None
+                        )
+            
             # Formatear columnas de eficacia y eficiencia con %
             for nombre in ['Atac', 'Recep', 'Saque', 'Bloc']:
                 if f'{nombre} Efc' in df_tabla_jugadores.columns:
