@@ -6954,8 +6954,6 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    """Función principal"""
-    
     # Verificar si hay sesión guardada en query params
     if not st.session_state.get('logged_in'):
         token = st.query_params.get('session')
