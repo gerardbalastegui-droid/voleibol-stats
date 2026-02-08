@@ -2177,6 +2177,41 @@ def obtener_momentos_criticos(partido_ids):
         resultados['general'] = calcular_stats(df)
         
         return df, resultados
+
+@st.cache_data(ttl=60)
+def obtener_valor_jugadores(partido_ids):
+    """Calcula el valor de cada jugador: puntos - errores"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                a.partido_id,
+                j.id as jugador_id,
+                CASE 
+                    WHEN j.nombre IS NOT NULL AND j.nombre != '' 
+                    THEN j.nombre || ' ' || j.apellido 
+                    ELSE j.apellido 
+                END AS jugador,
+                -- Puntos: ataques #, bloqueos #, saques #
+                COUNT(*) FILTER (WHERE a.tipo_accion IN ('atacar', 'bloqueo', 'saque') AND a.marca = '#') as puntos,
+                -- Errores: ataques =, recepciones =, saques =, bloqueos /
+                COUNT(*) FILTER (WHERE (a.tipo_accion IN ('atacar', 'recepción', 'saque') AND a.marca = '=') 
+                                    OR (a.tipo_accion = 'bloqueo' AND a.marca = '/')) as errores
+            FROM acciones_new a
+            JOIN jugadores j ON a.jugador_id = j.id
+            WHERE a.partido_id IN ({ids_str})
+            GROUP BY a.partido_id, j.id, j.nombre, j.apellido
+            ORDER BY j.apellido
+        """), conn)
+        
+        if not df.empty:
+            df['valor'] = df['puntos'] - df['errores']
+        
+        return df
         
 def obtener_rival(nombre_archivo):
     """Extrae el nombre del rival del nombre del archivo"""
@@ -3199,6 +3234,60 @@ def pagina_partido():
             )
         else:
             st.info("No hi ha dades de jugadors")
+
+        # Tabla de Valor dels Jugadors
+        st.markdown("---")
+        st.subheader("💎 Valor dels Jugadors")
+        
+        df_valor = obtener_valor_jugadores(partido_ids)
+        
+        if not df_valor.empty:
+            es_multiple = isinstance(partido_ids, list) and len(partido_ids) > 1
+            
+            if es_multiple:
+                # Calcular medias y desviación estándar por jugador
+                df_valor_agg = df_valor.groupby(['jugador_id', 'jugador']).agg({
+                    'puntos': ['mean', 'std'],
+                    'errores': ['mean', 'std'],
+                    'valor': ['mean', 'std']
+                }).reset_index()
+                
+                # Aplanar columnas multinivel
+                df_valor_agg.columns = ['jugador_id', 'Jugador', 'puntos_mean', 'puntos_std', 
+                                        'errores_mean', 'errores_std', 'valor_mean', 'valor_std']
+                
+                # Formatear para mostrar
+                df_tabla_valor = pd.DataFrame({
+                    'Jugador': df_valor_agg['Jugador'],
+                    '✅ Punts': df_valor_agg['puntos_mean'].apply(lambda x: f"{x:.1f}"),
+                    '❌ Errors': df_valor_agg['errores_mean'].apply(lambda x: f"{x:.1f}"),
+                    '📊 Valor': df_valor_agg['valor_mean'].apply(lambda x: f"{x:.1f}"),
+                    '📉 Desv.': df_valor_agg['valor_std'].apply(lambda x: f"±{x:.1f}" if pd.notna(x) else "-")
+                })
+                
+                # Ordenar por valor descendente
+                df_tabla_valor = df_tabla_valor.sort_values('📊 Valor', ascending=False, key=lambda x: x.str.replace('±', '').astype(float))
+                
+                st.info(f"📊 Mostrant **mitjanes** de {len(partido_ids)} partits. La columna 📉 Desv. indica la variabilitat del jugador.")
+            else:
+                # Un solo partido
+                df_tabla_valor = pd.DataFrame({
+                    'Jugador': df_valor['jugador'],
+                    '✅ Punts': df_valor['puntos'].astype(int).astype(str),
+                    '❌ Errors': df_valor['errores'].astype(int).astype(str),
+                    '📊 Valor': df_valor['valor'].astype(int).astype(str)
+                })
+                
+                # Ordenar por valor descendente
+                df_tabla_valor = df_tabla_valor.sort_values('📊 Valor', ascending=False, key=lambda x: x.astype(int))
+            
+            st.dataframe(df_tabla_valor, use_container_width=True, hide_index=True, height=400)
+            
+            # Mostrar mejor y peor jugador
+            mejor = df_tabla_valor.iloc[0]
+            st.success(f"🏆 **Millor valor:** {mejor['Jugador']} ({mejor['📊 Valor']})")
+        else:
+            st.info("No hi ha dades disponibles")
     
     with tab2:
         if not df_sideout.empty:
@@ -4078,6 +4167,55 @@ def pagina_jugador():
         })
         
         st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+        # Valor del Jugador
+        st.markdown("---")
+        st.subheader("💎 Valor del Jugador")
+    
+        df_valor_jugador = obtener_valor_jugadores(partido_ids)
+    
+        if not df_valor_jugador.empty:
+            # Filtrar por jugador seleccionado
+            df_valor_jug = df_valor_jugador[df_valor_jugador['jugador_id'] == jugador_id]
+        
+            if not df_valor_jug.empty:
+                es_multiple = len(df_valor_jug) > 1
+            
+                if es_multiple:
+                    # Calcular medias y desviación estándar
+                    puntos_mean = df_valor_jug['puntos'].mean()
+                    puntos_std = df_valor_jug['puntos'].std()
+                    errores_mean = df_valor_jug['errores'].mean()
+                    errores_std = df_valor_jug['errores'].std()
+                    valor_mean = df_valor_jug['valor'].mean()
+                    valor_std = df_valor_jug['valor'].std()
+                
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("✅ Punts (mitj.)", f"{puntos_mean:.1f}", f"±{puntos_std:.1f}" if pd.notna(puntos_std) else None)
+                    col2.metric("❌ Errors (mitj.)", f"{errores_mean:.1f}", f"±{errores_std:.1f}" if pd.notna(errores_std) else None)
+                    col3.metric("📊 Valor (mitj.)", f"{valor_mean:.1f}", f"±{valor_std:.1f}" if pd.notna(valor_std) else None)
+                
+                    # Interpretación de la desviación
+                    if pd.notna(valor_std):
+                        if valor_std < 2:
+                            col4.metric("📉 Constància", "Alta", "Molt constant")
+                        elif valor_std < 4:
+                            col4.metric("📉 Constància", "Mitjana", "Regular")
+                        else:
+                            col4.metric("📉 Constància", "Baixa", "Irregular")
+                    
+                    st.info(f"📊 Basat en {len(df_valor_jug)} partits")
+                else:
+                    # Un solo partido
+                    row = df_valor_jug.iloc[0]
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("✅ Punts", int(row['puntos']))
+                    col2.metric("❌ Errors", int(row['errores']))
+                    col3.metric("📊 Valor", int(row['valor']))
+            else:
+                st.info("No hi ha dades de valor per aquest jugador")
+        else:
+            st.info("No hi ha dades disponibles")
         
         # === EVOLUCIÓN PERSONAL ===
         st.markdown("---")
