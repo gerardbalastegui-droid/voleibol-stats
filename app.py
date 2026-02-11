@@ -892,6 +892,50 @@ def obtener_distribucion_por_rotacion_set(partido_ids, set_numero):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_eficacia_por_colocacion(jugador_id, partido_ids):
+    """Obtiene eficacia y eficiencia de ataque según la calidad de la colocación previa"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            WITH acciones_ordenadas AS (
+                SELECT 
+                    id,
+                    jugador_id,
+                    tipo_accion,
+                    marca,
+                    LAG(tipo_accion) OVER (PARTITION BY partido_id ORDER BY id) as accion_previa,
+                    LAG(marca) OVER (PARTITION BY partido_id ORDER BY id) as marca_previa
+                FROM acciones_new
+                WHERE partido_id IN ({ids_str})
+            )
+            SELECT 
+                marca_previa as colocacion,
+                COUNT(*) as total_ataques,
+                COUNT(*) FILTER (WHERE marca = '#') as puntos,
+                COUNT(*) FILTER (WHERE marca = '=') as errores,
+                ROUND((COUNT(*) FILTER (WHERE marca = '#')::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficacia,
+                ROUND(((COUNT(*) FILTER (WHERE marca = '#') - COUNT(*) FILTER (WHERE marca = '='))::decimal / NULLIF(COUNT(*),0))*100, 1) AS eficiencia
+            FROM acciones_ordenadas
+            WHERE tipo_accion = 'atacar'
+            AND accion_previa = 'colocación'
+            AND jugador_id = :jugador_id
+            AND marca_previa IN ('#', '+', '!')
+            GROUP BY marca_previa
+            ORDER BY 
+                CASE marca_previa 
+                    WHEN '#' THEN 1 
+                    WHEN '+' THEN 2 
+                    WHEN '!' THEN 3 
+                END
+        """), conn, params={"jugador_id": jugador_id})
+        
+        return df
+
+@st.cache_data(ttl=60)
 def obtener_distribucion_colocador_por_set(partido_ids, set_numero):
     """Obtiene distribución de colocaciones por zona para un set específico (solo ataques después de colocación)"""
     if isinstance(partido_ids, int):
@@ -4167,6 +4211,69 @@ def pagina_jugador():
         })
         
         st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+        # Eficàcia per Tipus de Col·locació
+        st.markdown("---")
+        st.subheader("🎯 Eficàcia d'Atac per Tipus de Col·locació")
+    
+        df_col = obtener_eficacia_por_colocacion(jugador_id, partido_ids)
+    
+        if not df_col.empty:
+            # Renombrar marcas para mostrar
+            nombres_col = {'#': '# Perfecta', '+': '+ Bona', '!': '! Dolenta'}
+            df_col['Colocació'] = df_col['colocacion'].map(nombres_col)
+        
+            # Crear tabla para mostrar
+            df_mostrar = df_col[['Colocació', 'total_ataques', 'puntos', 'errores', 'eficacia', 'eficiencia']].copy()
+            df_mostrar.columns = ['Col·locació', 'Total Atacs', 'Punts (#)', 'Errors (=)', 'Eficàcia (%)', 'Eficiència (%)']
+        
+            st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+        
+            # Gráfico de barras comparativo
+            col1, col2 = st.columns(2)
+        
+            with col1:
+                fig_ef = go.Figure(data=[
+                    go.Bar(
+                        x=df_col['Colocació'],
+                        y=df_col['eficacia'],
+                        marker_color=['#28a745', '#ffc107', '#dc3545'],
+                        text=df_col['eficacia'].apply(lambda x: f"{x}%"),
+                        textposition='outside'
+                    )
+                ])
+                fig_ef.update_layout(
+                    title="Eficàcia per Col·locació",
+                    xaxis_title="Tipus de Col·locació",
+                    yaxis_title="Eficàcia (%)",
+                    height=350,
+                    yaxis=dict(range=[0, max(df_col['eficacia'].max() * 1.2, 100)])
+                )
+                st.plotly_chart(fig_ef, use_container_width=True)
+        
+            with col2:
+                fig_efn = go.Figure(data=[
+                    go.Bar(
+                        x=df_col['Colocació'],
+                        y=df_col['eficiencia'],
+                        marker_color=['#28a745', '#ffc107', '#dc3545'],
+                        text=df_col['eficiencia'].apply(lambda x: f"{x}%"),
+                        textposition='outside'
+                    )
+                ])
+                fig_efn.update_layout(
+                    title="Eficiència per Col·locació",
+                    xaxis_title="Tipus de Col·locació",
+                    yaxis_title="Eficiència (%)",
+                    height=350
+                )
+                st.plotly_chart(fig_efn, use_container_width=True)
+        
+            # Insight
+            mejor = df_col.loc[df_col['eficacia'].idxmax()]
+            st.info(f"📊 **Millor rendiment:** Amb col·locació **{nombres_col.get(mejor['colocacion'], mejor['colocacion'])}** - {mejor['eficacia']}% eficàcia en {int(mejor['total_ataques'])} atacs")
+        else:
+            st.info("No hi ha dades suficients per analitzar l'eficàcia per tipus de col·locació")
 
         # Valor del Jugador
         st.markdown("---")
