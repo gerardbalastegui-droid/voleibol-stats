@@ -34,7 +34,7 @@ def es_local(nombre_archivo):
     return True  # Por defecto local
 
 def calcular_resultado(df, local):
-    """Calcula el resultado del partido"""
+    """Calcula el resultado del partido (siempre local-visitante)"""
     try:
         sets_info = df.groupby('set_numero').agg({
             'puntos_local': 'max',
@@ -50,10 +50,8 @@ def calcular_resultado(df, local):
             else:
                 sets_visitante += 1
         
-        if local:
-            return f"{sets_local}-{sets_visitante}"
-        else:
-            return f"{sets_visitante}-{sets_local}"
+        # Siempre devolver local-visitante
+        return f"{sets_local}-{sets_visitante}"
     except:
         return None
 
