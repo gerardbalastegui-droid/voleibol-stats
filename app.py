@@ -2071,6 +2071,8 @@ def obtener_tendencias_equipo(equipo_id, temporada_id, fase_id=None):
             
             df['victoria'] = df.apply(es_victoria, axis=1)
 
+        return df
+
 @st.cache_data(ttl=60)
 def obtener_sideout_por_partido(equipo_id, temporada_id, fase_id=None):
     """Obtiene el % de side-out partido a partido"""
