@@ -2051,19 +2051,25 @@ def obtener_tendencias_equipo(equipo_id, temporada_id, fase_id=None):
                 lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
             )
             
-            # Determinar victoria/derrota
-            def es_victoria(resultado):
-                if not resultado:
+            # Determinar victoria/derrota (considerando local/visitante)
+            def es_victoria(row):
+                if not row['resultado']:
                     return None
                 try:
-                    partes = resultado.split('-')
-                    return int(partes[0]) > int(partes[1])
+                    partes = row['resultado'].split('-')
+                    sets_local = int(partes[0])
+                    sets_visitante = int(partes[1])
+                    
+                    if row['local']:
+                        # Si somos locales, ganamos si el primer número es mayor
+                        return sets_local > sets_visitante
+                    else:
+                        # Si somos visitantes, ganamos si el segundo número es mayor
+                        return sets_visitante > sets_local
                 except:
                     return None
             
-            df['victoria'] = df['resultado'].apply(es_victoria)
-        
-        return df
+            df['victoria'] = df.apply(es_victoria, axis=1)
 
 @st.cache_data(ttl=60)
 def obtener_sideout_por_partido(equipo_id, temporada_id, fase_id=None):
