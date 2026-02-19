@@ -38,7 +38,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado con colores del club
+# CSS personalizado con colores del club + modo oscuro
 st.markdown(f"""
 <style>
     .main-header {{
@@ -58,11 +58,69 @@ st.markdown(f"""
         padding: 1rem;
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        color: #1f2937;
     }}
     .metric-good {{ color: {COLOR_VERDE}; font-weight: bold; }}
     .metric-warning {{ color: {COLOR_NARANJA}; font-weight: bold; }}
     .metric-bad {{ color: {COLOR_ROJO}; font-weight: bold; }}
     .stSelectbox label {{ font-weight: bold; }}
+    
+    /* Modo oscuro */
+    @media (prefers-color-scheme: dark) {{
+        .stat-card {{
+            background: #374151;
+            color: #f9fafb;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }}
+        
+        /* Cuadros de Side-out y Contraatac */
+        div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] > div {{
+            color: #f9fafb;
+        }}
+        
+        /* Tarjetas de jugadores */
+        div[data-testid="stContainer"] {{
+            background: #374151;
+            color: #f9fafb;
+        }}
+        
+        /* Cuadros con fondo claro - forzar texto oscuro visible */
+        .element-container div[style*="background"] {{
+            color: #1f2937 !important;
+        }}
+        
+        /* Cuadros amarillos (Millor Rotació, etc) */
+        div[style*="background: #FFD700"], 
+        div[style*="background:#FFD700"],
+        div[style*="background: {COLOR_AMARILLO}"],
+        div[style*="background:{COLOR_AMARILLO}"] {{
+            color: #1f2937 !important;
+        }}
+        
+        /* Cuadros rojos/rosas (errores) */
+        div[style*="background: #ffebee"],
+        div[style*="background:#ffebee"],
+        div[style*="background: #FFCDD2"],
+        div[style*="background:#FFCDD2"] {{
+            color: #1f2937 !important;
+        }}
+        
+        /* Cuadros blancos/grises claros */
+        div[style*="background: white"],
+        div[style*="background:white"],
+        div[style*="background: #ffffff"],
+        div[style*="background:#ffffff"],
+        div[style*="background: #f"],
+        div[style*="background:#f"] {{
+            background: #374151 !important;
+            color: #f9fafb !important;
+        }}
+        
+        /* Textos en tarjetas de ranking */
+        .stMarkdown p, .stMarkdown span {{
+            color: inherit;
+        }}
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -3341,7 +3399,7 @@ def pagina_partido():
         else:
             st.info("No hi ha dades disponibles")
     
-    with tab2:
+with tab2:
         if not df_sideout.empty:
             st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True, config={'staticPlot': True})
             
@@ -3351,11 +3409,11 @@ def pagina_partido():
                 target_col = col1 if row['fase'] == 'Side-out' else col2
                 with target_col:
                     st.markdown(f"""
-                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
-                        <h3>{row['fase']}</h3>
-                        <p><strong>Total:</strong> {row['total']} atacs</p>
-                        <p><strong>Eficàcia:</strong> {row['eficacia']}%</p>
-                        <p><strong>Eficiència:</strong> {row['eficiencia']}%</p>
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                        <h3 style="color: #1f2937;">{row['fase']}</h3>
+                        <p style="color: #1f2937;"><strong>Total:</strong> {row['total']} atacs</p>
+                        <p style="color: #1f2937;"><strong>Eficàcia:</strong> {row['eficacia']}%</p>
+                        <p style="color: #1f2937;"><strong>Eficiència:</strong> {row['eficiencia']}%</p>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -3619,7 +3677,7 @@ def pagina_partido():
         else:
             st.info("No hi ha dades d'errors")
 
-    with tab6:
+with tab6:
         st.subheader("📈 Anàlisi per Sets")
         
         df_sets = obtener_estadisticas_por_set(partido_ids)
@@ -3664,9 +3722,9 @@ def pagina_partido():
                         color_resultado = COLOR_NARANJA
                     
                     st.markdown(f"""
-                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem;">
-                        <strong style="font-size: 1.2rem;">Set {int(set_seleccionado)} - Mitjana: {p_local_media:.1f} - {p_visit_media:.1f}</strong><br>
-                        <span style="font-size: 0.9rem;">✅ {sets_ganados} guanyats · ❌ {sets_perdidos} perduts · Total: {total_sets} sets</span>
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem; color: #1f2937;">
+                        <strong style="font-size: 1.2rem; color: #1f2937;">Set {int(set_seleccionado)} - Mitjana: {p_local_media:.1f} - {p_visit_media:.1f}</strong><br>
+                        <span style="font-size: 0.9rem; color: #1f2937;">✅ {sets_ganados} guanyats · ❌ {sets_perdidos} perduts · Total: {total_sets} sets</span>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -3686,9 +3744,9 @@ def pagina_partido():
                         icono = "➡️"
                     
                     st.markdown(f"""
-                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem;">
-                        <strong style="font-size: 1.2rem;">Set {int(set_seleccionado)}: {p_local} - {p_visit}</strong>
-                        <span style="margin-left: 1rem;">{icono}</span>
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {color_resultado}; margin-bottom: 1rem; color: #1f2937;">
+                        <strong style="font-size: 1.2rem; color: #1f2937;">Set {int(set_seleccionado)}: {p_local} - {p_visit}</strong>
+                        <span style="margin-left: 1rem; color: #1f2937;">{icono}</span>
                     </div>
                     """, unsafe_allow_html=True)
             
@@ -3765,10 +3823,10 @@ def pagina_partido():
                     efic_so = round((positivo_so / total_so * 100), 1) if total_so > 0 else 0
                     
                     st.markdown(f"""
-                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
-                        <h4 style="margin: 0;">🏐 Side-out</h4>
+                    <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                        <h4 style="margin: 0; color: #1f2937;">🏐 Side-out</h4>
                         <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_so}%</p>
-                        <p style="margin: 0;">{positivo_so}/{total_so} positius · {puntos_so} punts</p>
+                        <p style="margin: 0; color: #1f2937;">{positivo_so}/{total_so} positius · {puntos_so} punts</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
@@ -3779,10 +3837,10 @@ def pagina_partido():
                     efic_ca = round((positivo_ca / total_ca * 100), 1) if total_ca > 0 else 0
                     
                     st.markdown(f"""
-                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
-                        <h4 style="margin: 0;">⚡ Contraatac</h4>
+                    <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                        <h4 style="margin: 0; color: #1f2937;">⚡ Contraatac</h4>
                         <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: {COLOR_ROJO};">{efic_ca}%</p>
-                        <p style="margin: 0;">{positivo_ca}/{total_ca} positius · {puntos_ca} punts</p>
+                        <p style="margin: 0; color: #1f2937;">{positivo_ca}/{total_ca} positius · {puntos_ca} punts</p>
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -3906,9 +3964,9 @@ def pagina_partido():
                     
                     with col1:
                         st.markdown(f"""
-                        <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center;">
-                            <h4 style="margin: 0;">🚀 Inici de Set</h4>
-                            <p style="font-size: 0.8rem; color: #666;">(0-5 punts)</p>
+                        <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                            <h4 style="margin: 0; color: #1f2937;">🚀 Inici de Set</h4>
+                            <p style="font-size: 0.8rem; color: #555;">(0-5 punts)</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -3921,9 +3979,9 @@ def pagina_partido():
                     
                     with col2:
                         st.markdown(f"""
-                        <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center;">
-                            <h4 style="margin: 0;">⚔️ Punts Ajustats</h4>
-                            <p style="font-size: 0.8rem; color: #666;">(diferència ≤2, +18 pts)</p>
+                        <div style="background: #FFF3E0; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                            <h4 style="margin: 0; color: #1f2937;">⚔️ Punts Ajustats</h4>
+                            <p style="font-size: 0.8rem; color: #555;">(diferència ≤2, +18 pts)</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -3936,9 +3994,9 @@ def pagina_partido():
                     
                     with col3:
                         st.markdown(f"""
-                        <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
-                            <h4 style="margin: 0;">🏁 Final de Set</h4>
-                            <p style="font-size: 0.8rem; color: #666;">(+20 punts)</p>
+                        <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                            <h4 style="margin: 0; color: #1f2937;">🏁 Final de Set</h4>
+                            <p style="font-size: 0.8rem; color: #555;">(+20 punts)</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -3952,7 +4010,7 @@ def pagina_partido():
                     st.info("No hi ha dades suficients de punts per analitzar moments crítics")
             
     
-    # === RANKINGS ===
+# === RANKINGS ===
     st.markdown("---")
     crear_podio(df_top, "🏆 Top Anotadors")
     
@@ -3981,9 +4039,9 @@ def pagina_partido():
                 dorsal_str = f"#{int(row['dorsal'])}" if pd.notna(row['dorsal']) else ""
                 posicion_str = f"({row['posicion']})" if row['posicion'] else ""
                 st.markdown(f"""
-                <div style="background: {COLOR_GRIS}; padding: 0.5rem; border-radius: 5px; margin: 0.25rem 0; text-align: center;">
-                    <strong>{row['jugador']}</strong> {dorsal_str}<br>
-                    <small>{posicion_str} - {row['acciones']} accions</small>
+                <div style="background: {COLOR_GRIS}; padding: 0.5rem; border-radius: 5px; margin: 0.25rem 0; text-align: center; color: #1f2937;">
+                    <strong style="color: #1f2937;">{row['jugador']}</strong> {dorsal_str}<br>
+                    <small style="color: #374151;">{posicion_str} - {row['acciones']} accions</small>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -4497,10 +4555,10 @@ def pagina_jugador():
                             icono = "→"
                         
                         st.markdown(f"""
-                        <div style="text-align: center; padding: 0.5rem; background: {COLOR_GRIS}; border-radius: 10px;">
-                            <strong>{data['accion']}</strong><br>
+                        <div style="text-align: center; padding: 0.5rem; background: {COLOR_GRIS}; border-radius: 10px; color: #1f2937;">
+                            <strong style="color: #1f2937;">{data['accion']}</strong><br>
                             <span style="font-size: 1.5rem; color: {color};">{icono} {diff:+.1f}%</span><br>
-                            <small>vs mitjana</small>
+                            <small style="color: #374151;">vs mitjana</small>
                         </div>
                         """, unsafe_allow_html=True)
         else:
@@ -4545,26 +4603,26 @@ def pagina_jugador():
                             emoji = "↗"
                         
                         st.markdown(f"""
-                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px; border-left: 4px solid {color};">
-                            <strong>{nombre}</strong><br>
+                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px; border-left: 4px solid {color}; color: #1f2937;">
+                            <strong style="color: #1f2937;">{nombre}</strong><br>
                             <span style="font-size: 2rem;">{emoji}</span><br>
-                            <span style="font-size: 1.5rem; font-weight: bold;">{posicion}º</span><br>
-                            <small>de {total_jugadores} jugadors</small><br>
+                            <span style="font-size: 1.5rem; font-weight: bold; color: #1f2937;">{posicion}º</span><br>
+                            <small style="color: #374151;">de {total_jugadores} jugadors</small><br>
                             <small style="color: {COLOR_ROJO};">{eficacia}% efic.</small>
                         </div>
                         """, unsafe_allow_html=True)
                     else:
                         st.markdown(f"""
-                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px;">
-                            <strong>{nombre}</strong><br>
-                            <small>Mínim 5 accions</small>
+                        <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px; color: #1f2937;">
+                            <strong style="color: #1f2937;">{nombre}</strong><br>
+                            <small style="color: #374151;">Mínim 5 accions</small>
                         </div>
                         """, unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
-                    <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px;">
-                        <strong>{nombre}</strong><br>
-                        <small>Sense dades</small>
+                    <div style="text-align: center; padding: 1rem; background: {COLOR_GRIS}; border-radius: 10px; color: #1f2937;">
+                        <strong style="color: #1f2937;">{nombre}</strong><br>
+                        <small style="color: #374151;">Sense dades</small>
                     </div>
                     """, unsafe_allow_html=True)
         
@@ -4607,7 +4665,7 @@ def pagina_jugador():
                     punts_forts = [a for a in analisis_ordenado if a['diferencia'] > 0]
                     
                     st.markdown(f"""
-                    <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_VERDE};">
+                    <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_VERDE}; color: #1f2937;">
                         <h4 style="color: {COLOR_VERDE}; margin: 0;">✅ Punts Forts</h4>
                     </div>
                     """, unsafe_allow_html=True)
@@ -4615,20 +4673,20 @@ def pagina_jugador():
                     if punts_forts:
                         for pf in punts_forts:
                             st.markdown(f"""
-                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: white; border-radius: 5px;">
-                                <strong>{pf['nombre']}</strong>: {pf['eficacia']}% 
+                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: #f0f0f0; border-radius: 5px; color: #1f2937;">
+                                <strong style="color: #1f2937;">{pf['nombre']}</strong>: {pf['eficacia']}% 
                                 <span style="color: {COLOR_VERDE};">(+{pf['diferencia']:.1f}% vs equip)</span>
                             </div>
                             """, unsafe_allow_html=True)
                     else:
-                        st.markdown("<p style='padding: 0.5rem;'>Cap acció destaca per sobre la mitjana</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='padding: 0.5rem; color: #1f2937;'>Cap acció destaca per sobre la mitjana</p>", unsafe_allow_html=True)
                 
                 # Puntos a mejorar (diferencia negativa)
                 with col2:
                     punts_febles = [a for a in analisis_ordenado if a['diferencia'] < 0]
                     
                     st.markdown(f"""
-                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_ROJO};">
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; border-left: 4px solid {COLOR_ROJO}; color: #1f2937;">
                         <h4 style="color: {COLOR_ROJO}; margin: 0;">⚠️ A Millorar</h4>
                     </div>
                     """, unsafe_allow_html=True)
@@ -4636,13 +4694,13 @@ def pagina_jugador():
                     if punts_febles:
                         for pf in punts_febles:
                             st.markdown(f"""
-                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: white; border-radius: 5px;">
-                                <strong>{pf['nombre']}</strong>: {pf['eficacia']}% 
+                            <div style="padding: 0.5rem; margin: 0.5rem 0; background: #f0f0f0; border-radius: 5px; color: #1f2937;">
+                                <strong style="color: #1f2937;">{pf['nombre']}</strong>: {pf['eficacia']}% 
                                 <span style="color: {COLOR_ROJO};">({pf['diferencia']:.1f}% vs equip)</span>
                             </div>
                             """, unsafe_allow_html=True)
                     else:
-                        st.markdown("<p style='padding: 0.5rem;'>Totes les accions estan a la mitjana o per sobre!</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='padding: 0.5rem; color: #1f2937;'>Totes les accions estan a la mitjana o per sobre!</p>", unsafe_allow_html=True)
                 
                 # Resumen general
                 if analisis_ordenado:
@@ -4651,10 +4709,10 @@ def pagina_jugador():
                     
                     st.markdown("---")
                     st.markdown(f"""
-                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
-                        <h4>📊 Resum</h4>
-                        <p><strong>El teu punt fort és {mejor['nombre'].lower()}</strong> ({mejor['eficacia']}% eficàcia)</p>
-                        <p><strong>Pots millorar en {peor['nombre'].lower()}</strong> ({peor['eficacia']}% eficàcia)</p>
+                    <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                        <h4 style="color: #1f2937;">📊 Resum</h4>
+                        <p style="color: #1f2937;"><strong>El teu punt fort és {mejor['nombre'].lower()}</strong> ({mejor['eficacia']}% eficàcia)</p>
+                        <p style="color: #1f2937;"><strong>Pots millorar en {peor['nombre'].lower()}</strong> ({peor['eficacia']}% eficàcia)</p>
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -4711,21 +4769,21 @@ def pagina_jugador():
             
             with col1:
                 st.markdown(f"""
-                <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_VERDE};">
+                <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_VERDE}; color: #1f2937;">
                     <h4 style="color: {COLOR_VERDE}; margin: 0;">⭐ Millor Rotació</h4>
-                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0;">{mejor_rot['rotacion']}</p>
-                    <p style="margin: 0;">{mejor_rot['eficacia']}% eficàcia</p>
-                    <small>{int(mejor_rot['puntos'])} punts en {int(mejor_rot['total'])} atacs</small>
+                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: #1f2937;">{mejor_rot['rotacion']}</p>
+                    <p style="margin: 0; color: #1f2937;">{mejor_rot['eficacia']}% eficàcia</p>
+                    <small style="color: #374151;">{int(mejor_rot['puntos'])} punts en {int(mejor_rot['total'])} atacs</small>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
                 st.markdown(f"""
-                <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_ROJO};">
+                <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_ROJO}; color: #1f2937;">
                     <h4 style="color: {COLOR_ROJO}; margin: 0;">⚠️ A Treballar</h4>
-                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0;">{peor_rot['rotacion']}</p>
-                    <p style="margin: 0;">{peor_rot['eficacia']}% eficàcia</p>
-                    <small>{int(peor_rot['puntos'])} punts en {int(peor_rot['total'])} atacs</small>
+                    <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: #1f2937;">{peor_rot['rotacion']}</p>
+                    <p style="margin: 0; color: #1f2937;">{peor_rot['eficacia']}% eficàcia</p>
+                    <small style="color: #374151;">{int(peor_rot['puntos'])} punts en {int(peor_rot['total'])} atacs</small>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -5628,19 +5686,19 @@ def pagina_fichas():
         
         with col1:
             st.markdown(f"""
-            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
+            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center; color: #1f2937;">
                 <h4 style="color: {COLOR_ROJO}; margin: 0;">EFICÀCIA ATAC</h4>
                 <p style="font-size: 3rem; font-weight: bold; color: {color_efic}; margin: 0.5rem 0;">{eficacia}%</p>
-                <small style="color: {COLOR_GRISOSCURO};"># i +</small>
+                <small style="color: #374151;"># i +</small>
             </div>
             """, unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"""
-            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center;">
+            <div style="background: {COLOR_GRIS}; padding: 1.5rem; border-radius: 10px; text-align: center; color: #1f2937;">
                 <h4 style="color: {COLOR_ROJO}; margin: 0;">PUNTS ATAC</h4>
                 <p style="font-size: 3rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">{ficha['ataque']['puntos'] or 0}</p>
-                <small>de {ficha['ataque']['total'] or 0} intents</small>
+                <small style="color: #374151;">de {ficha['ataque']['total'] or 0} intents</small>
             </div>
             """, unsafe_allow_html=True)
         
@@ -5663,23 +5721,23 @@ def pagina_fichas():
         
         with col1:
             st.markdown(f"""
-            <div style="background: {COLOR_AMARILLO}; padding: 1rem; border-radius: 10px;">
-                <h4 style="margin: 0;">⭐ MILLOR ROTACIÓ</h4>
+            <div style="background: {COLOR_AMARILLO}; padding: 1rem; border-radius: 10px; color: #1f2937;">
+                <h4 style="margin: 0; color: #1f2937;">⭐ MILLOR ROTACIÓ</h4>
                 <p style="font-size: 2rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">
                     {ficha['mejor_rotacion']['nombre']}
                 </p>
-                <small>{ficha['mejor_rotacion']['puntos']} punts en {ficha['mejor_rotacion']['total']} atacs</small>
+                <small style="color: #374151;">{ficha['mejor_rotacion']['puntos']} punts en {ficha['mejor_rotacion']['total']} atacs</small>
             </div>
             """, unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"""
-            <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px;">
-                <h4 style="margin: 0;">🎯 ZONA MÉS PRODUCTIVA</h4>
+            <div style="background: #E3F2FD; padding: 1rem; border-radius: 10px; color: #1f2937;">
+                <h4 style="margin: 0; color: #1f2937;">🎯 ZONA MÉS PRODUCTIVA</h4>
                 <p style="font-size: 2rem; font-weight: bold; color: {COLOR_ROJO}; margin: 0.5rem 0;">
                     {ficha['mejor_zona']['nombre']}
                 </p>
-                <small>{ficha['mejor_zona']['puntos']} punts en {ficha['mejor_zona']['total']} atacs</small>
+                <small style="color: #374151;">{ficha['mejor_zona']['puntos']} punts en {ficha['mejor_zona']['total']} atacs</small>
             </div>
             """, unsafe_allow_html=True)
         
@@ -5713,8 +5771,8 @@ def pagina_fichas():
                 nombre_cat = nombres_acc.get(row['tipo_accion'], row['tipo_accion'])
                 with cols[idx]:
                     st.markdown(f"""
-                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center;">
-                        <p style="margin: 0; font-weight: bold;">{nombre_cat}</p>
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                        <p style="margin: 0; font-weight: bold; color: #1f2937;">{nombre_cat}</p>
                         <p style="font-size: 2rem; color: {COLOR_ROJO}; font-weight: bold; margin: 0;">{row['errores']}</p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -5797,10 +5855,10 @@ def pagina_fichas():
                                 icono = "➡️"
                             
                             st.markdown(f"""
-                            <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center;">
-                                <strong>{comp['accion']}</strong><br>
+                            <div style="background: {COLOR_GRIS}; padding: 1rem; border-radius: 10px; text-align: center; color: #1f2937;">
+                                <strong style="color: #1f2937;">{comp['accion']}</strong><br>
                                 <span style="font-size: 1.5rem; color: {color};">{icono} {comp['diff']:+.1f}%</span><br>
-                                <small>Avui: {comp['actual']}% | Mitjana: {comp['media']}%</small>
+                                <small style="color: #374151;">Avui: {comp['actual']}% | Mitjana: {comp['media']}%</small>
                             </div>
                             """, unsafe_allow_html=True)
         
