@@ -3399,7 +3399,7 @@ def pagina_partido():
         else:
             st.info("No hi ha dades disponibles")
     
-with tab2:
+    with tab2:
         if not df_sideout.empty:
             st.plotly_chart(crear_grafico_sideout(df_sideout), use_container_width=True, config={'staticPlot': True})
             
