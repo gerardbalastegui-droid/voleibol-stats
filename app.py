@@ -3677,7 +3677,7 @@ def pagina_partido():
         else:
             st.info("No hi ha dades d'errors")
 
-with tab6:
+    with tab6:
         st.subheader("📈 Anàlisi per Sets")
         
         df_sets = obtener_estadisticas_por_set(partido_ids)
@@ -4010,7 +4010,7 @@ with tab6:
                     st.info("No hi ha dades suficients de punts per analitzar moments crítics")
             
     
-# === RANKINGS ===
+    # === RANKINGS ===
     st.markdown("---")
     crear_podio(df_top, "🏆 Top Anotadors")
     
@@ -4044,7 +4044,7 @@ with tab6:
                     <small style="color: #374151;">{posicion_str} - {row['acciones']} accions</small>
                 </div>
                 """, unsafe_allow_html=True)
-        
+                
 def pagina_jugador():
     """Página de análisis de jugador"""
     st.markdown("""
