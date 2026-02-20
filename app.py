@@ -2866,7 +2866,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
                 x=x_pos, y=y_pos + 0.22,
                 text=f"<b>{zona}</b>",
                 showarrow=False,
-                font=dict(size=10, color=COLOR_NEGRO)
+                font=dict(size=12, color=COLOR_NEGRO)
             )
             
             # Porcentaje
@@ -2874,7 +2874,7 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
                 x=x_pos, y=y_pos,
                 text=f"<b>{pct}%</b>",
                 showarrow=False,
-                font=dict(size=16, color=COLOR_ROJO)
+                font=dict(size=20, color=COLOR_ROJO)
             )
             
             # Puntos y eficiencia
@@ -2882,15 +2882,15 @@ def crear_mini_grafico_rotacion(df_rotacion, rotacion):
                 x=x_pos, y=y_pos - 0.25,
                 text=f"#{int(puntos)} ({eficiencia}%)",
                 showarrow=False,
-                font=dict(size=9, color=COLOR_NEGRO)
+                font=dict(size=11, color=COLOR_NEGRO)
             )
     
     fig.update_layout(
-        title=f"Rotació {rotacion} ({total_ataques} atacs)",
+        title=dict(text=f"Rotació {rotacion} ({total_ataques} atacs)", font=dict(size=14)),
         xaxis=dict(visible=False, range=[-0.8, 3.2]),
         yaxis=dict(visible=False, range=[-0.6, 1.5], scaleanchor="x"),
-        height=280,
-        margin=dict(l=5, r=5, t=35, b=5),
+        height=320,
+        margin=dict(l=10, r=10, t=40, b=10),
         showlegend=False,
         plot_bgcolor='white'
     )
@@ -3880,9 +3880,9 @@ def pagina_partido():
             if not df_rot_set.empty:
                 rotaciones = sorted(df_rot_set['rotacion'].unique())
                 
-                # Crear 2 filas de 3 columnas
-                for fila in range(0, len(rotaciones), 3):
-                    cols = st.columns(3)
+                # Crear 3 filas de 2 columnas
+                for fila in range(0, len(rotaciones), 2):
+                    cols = st.columns(2)
                     for col_idx, col in enumerate(cols):
                         rot_idx = fila + col_idx
                         if rot_idx < len(rotaciones):
