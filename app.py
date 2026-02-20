@@ -2010,6 +2010,88 @@ def obtener_estadisticas_por_set(partido_ids):
         return df
 
 @st.cache_data(ttl=60)
+def obtener_recepcion_por_zona_jugador(partido_ids, jugador_id):
+    """Obtiene estadísticas de recepción por zona del campo para un jugador específico"""
+    if isinstance(partido_ids, int):
+        partido_ids = [partido_ids]
+    
+    ids_str = ','.join(map(str, partido_ids))
+    
+    # Mapeo: rotación -> {posición jugador -> zona recepción}
+    mapeo_recepcion = {
+        'p1': {'p2': 'Z1', 'p6': 'Z6', 'p5': 'Z5'},
+        'p2': {'p1': 'Z1', 'p6': 'Z6', 'p3': 'Z5'},
+        'p3': {'p1': 'Z1', 'p5': 'Z6', 'p4': 'Z5'},
+        'p4': {'p6': 'Z1', 'p5': 'Z6', 'p2': 'Z5'},
+        'p5': {'p1': 'Z1', 'p6': 'Z6', 'p3': 'Z5'},
+        'p6': {'p1': 'Z1', 'p5': 'Z6', 'p4': 'Z5'},
+    }
+    
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(f"""
+            SELECT 
+                zona_jugador as posicion_receptor,
+                zona_colocador as rotacion,
+                marca,
+                COUNT(*) as cantidad
+            FROM acciones_new
+            WHERE partido_id IN ({ids_str})
+            AND jugador_id = :jugador_id
+            AND tipo_accion = 'recepción'
+            AND zona_jugador IS NOT NULL
+            AND zona_colocador IS NOT NULL
+            GROUP BY zona_jugador, zona_colocador, marca
+            ORDER BY zona_colocador, zona_jugador
+        """), conn, params={"jugador_id": jugador_id})
+    
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Calcular zona de recepción
+    def calcular_zona_recepcion(row):
+        rotacion = row['rotacion'].lower() if row['rotacion'] else None
+        posicion = row['posicion_receptor'].lower() if row['posicion_receptor'] else None
+        
+        if rotacion and posicion and rotacion in mapeo_recepcion:
+            return mapeo_recepcion[rotacion].get(posicion, 'Altres')
+        return 'Altres'
+    
+    df['zona_recepcion'] = df.apply(calcular_zona_recepcion, axis=1)
+    
+    # Agrupar por zona de recepción
+    df_agrupado = df.groupby(['zona_recepcion', 'marca']).agg({
+        'cantidad': 'sum'
+    }).reset_index()
+    
+    # Calcular estadísticas por zona
+    zonas = df_agrupado['zona_recepcion'].unique()
+    resultados = []
+    
+    for zona in zonas:
+        df_zona = df_agrupado[df_agrupado['zona_recepcion'] == zona]
+        total = df_zona['cantidad'].sum()
+        
+        # Contar por marca
+        positivos = df_zona[df_zona['marca'].isin(['#', '+'])]['cantidad'].sum()
+        perfectos = df_zona[df_zona['marca'] == '#']['cantidad'].sum()
+        errores = df_zona[df_zona['marca'] == '=']['cantidad'].sum()
+        
+        eficacia = round((positivos / total * 100), 1) if total > 0 else 0
+        eficiencia = round(((positivos - errores) / total * 100), 1) if total > 0 else 0
+        
+        resultados.append({
+            'zona': zona,
+            'total': total,
+            'positivos': positivos,
+            'perfectos': perfectos,
+            'errores': errores,
+            'eficacia': eficacia,
+            'eficiencia': eficiencia
+        })
+    
+    return pd.DataFrame(resultados)
+
+@st.cache_data(ttl=60)
 def obtener_puntos_por_set(partido_ids):
     """Obtiene el marcador final de cada set (sumando +1 al ganador)"""
     if isinstance(partido_ids, int):
@@ -2519,6 +2601,113 @@ def crear_grafico_radar_jugador(df_jugador):
         ),
         title='Perfil del Jugador (Eficàcia %)',
         height=400
+    )
+    
+    return fig
+
+def crear_grafico_recepcion_zonas(df_recepcion):
+    """Crea visualización de recepción por zonas del campo (Z1, Z6, Z5)"""
+    
+    if df_recepcion.empty:
+        return None
+    
+    # Crear diccionario de datos por zona
+    datos_zona = {}
+    total_recepciones = df_recepcion['total'].sum()
+    
+    for _, row in df_recepcion.iterrows():
+        zona = row['zona']
+        if zona in ['Z1', 'Z5', 'Z6']:
+            pct = round((row['total'] / total_recepciones * 100), 1) if total_recepciones > 0 else 0
+            datos_zona[zona] = {
+                'total': row['total'],
+                'porcentaje': pct,
+                'eficacia': row['eficacia'],
+                'eficiencia': row['eficiencia'],
+                'positivos': row['positivos'],
+                'errores': row['errores']
+            }
+    
+    # Layout del campo de recepción: Z5 (izq), Z6 (centro), Z1 (der)
+    zonas_campo = ['Z5', 'Z6', 'Z1']
+    
+    fig = go.Figure()
+    
+    for col_idx, zona in enumerate(zonas_campo):
+        x_pos = col_idx * 1.5
+        y_pos = 0
+        
+        if zona in datos_zona:
+            pct = datos_zona[zona]['porcentaje']
+            efic = datos_zona[zona]['eficacia']
+            eficiencia = datos_zona[zona]['eficiencia']
+            total = datos_zona[zona]['total']
+            positivos = datos_zona[zona]['positivos']
+        else:
+            pct = 0
+            efic = 0
+            eficiencia = 0
+            total = 0
+            positivos = 0
+        
+        # Color de fondo según eficacia
+        if efic >= 60:
+            bg_color = "rgba(76, 175, 80, 0.3)"  # Verde claro
+        elif efic >= 45:
+            bg_color = "rgba(255, 193, 7, 0.3)"  # Amarillo claro
+        elif efic > 0:
+            bg_color = "rgba(244, 67, 54, 0.3)"  # Rojo claro
+        else:
+            bg_color = COLOR_BLANCO
+        
+        # Añadir rectángulo de zona
+        fig.add_shape(
+            type="rect",
+            x0=x_pos - 0.6, y0=y_pos - 0.5,
+            x1=x_pos + 0.6, y1=y_pos + 0.5,
+            fillcolor=bg_color,
+            line=dict(color=COLOR_NEGRO, width=2),
+        )
+        
+        # Nombre de la zona
+        fig.add_annotation(
+            x=x_pos, y=y_pos + 0.32,
+            text=f"<b>{zona}</b>",
+            showarrow=False,
+            font=dict(size=14, color=COLOR_NEGRO)
+        )
+        
+        # Eficacia (grande)
+        fig.add_annotation(
+            x=x_pos, y=y_pos + 0.05,
+            text=f"<b>{efic}%</b>",
+            showarrow=False,
+            font=dict(size=24, color=COLOR_ROJO)
+        )
+        
+        # Eficiencia y total
+        fig.add_annotation(
+            x=x_pos, y=y_pos - 0.22,
+            text=f"Efn: {eficiencia}%",
+            showarrow=False,
+            font=dict(size=11, color=COLOR_NEGRO)
+        )
+        
+        fig.add_annotation(
+            x=x_pos, y=y_pos - 0.38,
+            text=f"{positivos}/{total} (+/#)",
+            showarrow=False,
+            font=dict(size=10, color="#666666")
+        )
+    
+    fig.update_layout(
+        title=dict(text=f"Recepció per Zona ({total_recepciones} recepcions)", font=dict(size=14)),
+        xaxis=dict(visible=False, range=[-1, 4]),
+        yaxis=dict(visible=False, range=[-0.7, 0.7], scaleanchor="x"),
+        height=250,
+        margin=dict(l=10, r=10, t=40, b=10),
+        showlegend=False,
+        plot_bgcolor='white'
     )
     
     return fig
@@ -4799,6 +4988,68 @@ def pagina_jugador():
                 st.dataframe(df_rot_display, use_container_width=True, hide_index=True)
         else:
             st.info("No hi ha dades d'atac per rotació per aquest jugador")
+
+        # === RECEPCIÓ PER ZONA (solo para receptores/líberos) ===
+        st.markdown("---")
+        st.subheader("🏐 Recepció per Zona del Camp")
+        
+        df_recepcion_zona = obtener_recepcion_por_zona_jugador(partido_ids, jugador_id)
+        
+        if not df_recepcion_zona.empty and df_recepcion_zona['total'].sum() >= 5:
+            # Gráfico visual
+            fig_rec = crear_grafico_recepcion_zonas(df_recepcion_zona)
+            if fig_rec:
+                st.plotly_chart(fig_rec, use_container_width=True, config={'staticPlot': True})
+            
+            # Filtrar solo Z1, Z5, Z6
+            df_zonas_validas = df_recepcion_zona[df_recepcion_zona['zona'].isin(['Z1', 'Z5', 'Z6'])]
+            
+            if not df_zonas_validas.empty:
+                # Mejor y peor zona
+                mejor_zona = df_zonas_validas.loc[df_zonas_validas['eficacia'].idxmax()]
+                peor_zona = df_zonas_validas.loc[df_zonas_validas['eficacia'].idxmin()]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div style="background: #E8F5E9; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_VERDE}; color: #1f2937;">
+                        <h4 style="color: {COLOR_VERDE}; margin: 0;">⭐ Millor Zona</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: #1f2937;">{mejor_zona['zona']}</p>
+                        <p style="margin: 0; color: #1f2937;">{mejor_zona['eficacia']}% eficàcia</p>
+                        <small style="color: #374151;">{int(mejor_zona['positivos'])}/{int(mejor_zona['total'])} positives</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div style="background: #FFEBEE; padding: 1rem; border-radius: 10px; text-align: center; border-left: 4px solid {COLOR_ROJO}; color: #1f2937;">
+                        <h4 style="color: {COLOR_ROJO}; margin: 0;">⚠️ A Treballar</h4>
+                        <p style="font-size: 2rem; font-weight: bold; margin: 0.5rem 0; color: #1f2937;">{peor_zona['zona']}</p>
+                        <p style="margin: 0; color: #1f2937;">{peor_zona['eficacia']}% eficàcia</p>
+                        <small style="color: #374151;">{int(peor_zona['positivos'])}/{int(peor_zona['total'])} positives</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Tabla detallada
+                with st.expander("📋 Veure detall per zona"):
+                    df_display = df_zonas_validas[['zona', 'total', 'positivos', 'errores', 'eficacia', 'eficiencia']].rename(columns={
+                        'zona': 'Zona',
+                        'total': 'Total',
+                        'positivos': 'Positives (+/#)',
+                        'errores': 'Errors (=)',
+                        'eficacia': 'Eficàcia (%)',
+                        'eficiencia': 'Eficiència (%)'
+                    })
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                # Insight
+                total_rec = df_zonas_validas['total'].sum()
+                efic_global = round((df_zonas_validas['positivos'].sum() / total_rec * 100), 1) if total_rec > 0 else 0
+                
+                st.info(f"📊 **Eficàcia global de recepció:** {efic_global}% en {int(total_rec)} recepcions")
+        else:
+            st.info("No hi ha dades suficients de recepció per zona (mínim 5 recepcions)")
 
 def pagina_comparativa():
     """Página de comparación de partidos y jugadores"""
