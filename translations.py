@@ -94,6 +94,20 @@ TRANSLATIONS = {
         "ca": "Si t'agrada l'app, convida'm a un cafè ☕",
         "de": "Wenn dir die App gefällt, spendier mir einen Kaffee ☕",
     },
+    
+    # ---- Home: resum ràpid + historial ----
+    "resum_rapid": {"ca": "📊 Resum ràpid", "de": "📊 Schnellübersicht"},
+    "partits": {"ca": "Partits", "de": "Spiele"},
+    "temporada_metric": {"ca": "Temporada", "de": "Saison"},
+    "benvinguda_titol": {"ca": "Benvingut al sistema d'anàlisi estadístic!", "de": "Willkommen im Statistik-Analysesystem!"},
+    "benvinguda_intro": {"ca": "Utilitza el menú lateral per seleccionar el context de treball i navegar entre les seccions.", "de": "Nutze das Seitenmenü, um den Arbeitskontext auszuwählen und zwischen den Bereichen zu navigieren."},
+    "historial_titol": {"ca": "📋 Historial de Partits", "de": "📋 Spielverlauf"},
+    "victories": {"ca": "Victòries", "de": "Siege"},
+    "derrotes": {"ca": "Derrotes", "de": "Niederlagen"},
+    "sets_favor_contra": {"ca": "Sets (favor-contra)", "de": "Sätze (für-gegen)"},
+    "sense_partits": {"ca": "Encara no hi ha partits registrats", "de": "Noch keine Spiele erfasst"},
+    "local_curt": {"ca": "🏠", "de": "🏠"},
+    "visitant_curt": {"ca": "✈️", "de": "✈️"},
 }
 
 
