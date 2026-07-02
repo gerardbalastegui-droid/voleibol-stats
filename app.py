@@ -5775,6 +5775,79 @@ def pagina_comparativa():
                 df_display.columns = ['Partit', 'Resultat', 'Efic. Atac (%)', 'Efic. Recep. (%)', 'Punts Directes', 'Errors', 'Balanç']
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
 
+def pagina_informes():
+    """Generador selectiu d'informes de partit en PDF."""
+    st.markdown('<div class="main-header"><h1>' + t("informe_titol") + '</h1></div>',
+                unsafe_allow_html=True)
+
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
+        st.warning(t("avis_context"))
+        return
+
+    partidos = cargar_partidos(
+        st.session_state.equipo_id,
+        st.session_state.temporada_id,
+        st.session_state.get('fase_id')
+    )
+    if partidos.empty:
+        st.info(t("sense_partits"))
+        return
+
+    partidos['display'] = partidos.apply(
+        lambda x: f"vs {x['rival']} ({'L' if x['local'] else 'V'})", axis=1
+    )
+    lang = st.session_state.get("lang", "ca")
+
+    partido_id = st.selectbox(
+        t("informe_selecciona_partit"),
+        options=partidos['id'].tolist(),
+        format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
+        key='informe_partido_' + lang,
+    )
+
+    BLOCS = {
+        "eficacia_equip": t("bloc_eficacia_equip"),
+        "detall_jugador": t("bloc_detall_jugador"),
+        "sideout": t("bloc_sideout"),
+        "rotacions": t("bloc_rotacions"),
+        "distribucio": t("bloc_distribucio"),
+        "distribucio_recepcio": t("bloc_distribucio_recepcio"),
+        "errors": t("bloc_errors"),
+        "rankings": t("bloc_rankings"),
+        "valor_jugadors": t("bloc_valor_jugadors"),
+    }
+
+    seleccion = st.multiselect(
+        t("informe_blocs"),
+        options=list(BLOCS.keys()),
+        default=list(BLOCS.keys()),
+        format_func=lambda k: BLOCS[k],
+        key='informe_blocs_' + lang,
+    )
+
+    if st.button(t("informe_generar"), type="primary"):
+        if not seleccion:
+            st.warning(t("informe_cap_bloc"))
+        else:
+            with st.spinner(t("informe_generant")):
+                from informe_selector import generar_pdf_partido
+                pdf_buffer = generar_pdf_partido(partido_id, seleccion)
+            if pdf_buffer is None:
+                st.error(t("informe_error"))
+            else:
+                info = partidos[partidos['id'] == partido_id].iloc[0]
+                nom = f"informe_{info['rival']}".replace(' ', '_') + ".pdf"
+                st.session_state['pdf_generat'] = pdf_buffer.getvalue()
+                st.session_state['pdf_nom'] = nom
+
+    if st.session_state.get('pdf_generat'):
+        st.download_button(
+            t("informe_descarregar"),
+            data=st.session_state['pdf_generat'],
+            file_name=st.session_state.get('pdf_nom', 'informe.pdf'),
+            mime="application/pdf",
+        )
+
 def pagina_fichas():
     """Página de fichas individuales de jugadores"""
     st.markdown("""
@@ -7249,9 +7322,9 @@ def sidebar_contexto():
     
     # Navegación según rol
     if es_admin:
-        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa", "importar", "admin"]
+        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa", "informes", "importar", "admin"]
     else:
-        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa"]
+        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa", "informes"]
 
     nav_labels = {
         "inici": "🏠 " + t("nav_inici"),
@@ -7260,6 +7333,7 @@ def sidebar_contexto():
         "jugador": "👤 " + t("nav_jugador"),
         "fitxes": "🎴 " + t("nav_fitxes"),
         "comparativa": "📈 " + t("nav_comparativa"),
+        "informes": "📄 " + t("nav_informes"),
         "importar": "📤 " + t("nav_importar"),
         "admin": "⚙️ " + t("nav_admin"),
     }
@@ -7369,6 +7443,8 @@ def main():
         pagina_fichas()
     elif pagina == "comparativa":
         pagina_comparativa()
+    elif pagina == "informes":
+        pagina_informes()
     elif pagina == "importar":
         if es_admin:
             from importar_partido_streamlit import pagina_importar_partido
