@@ -3180,162 +3180,97 @@ def crear_grafico_errores_jugador(df_errores_jug):
 # =============================================================================
 
 def pagina_inicio():
-    """Página principal de bienvenida"""
+    """Página principal: resum ràpid + historial de partits."""
     st.markdown("""
     <div class="main-header">
-        <h1>🏐 Sistema d'Estadístiques de Voleibol</h1>
+        <h1>🏐 Voleibol Stats</h1>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Mostrar contenido si hay contexto
-    if 'equipo_id' in st.session_state and st.session_state.equipo_id:
-        
-        # Obtener badges
-        badges = obtener_badges_equipo(
-            st.session_state.equipo_id,
-            st.session_state.temporada_id,
-            st.session_state.get('fase_id')
-        )
-        
-        # Notificación si hay badges nuevos (del último partido)
-        if badges:
-            partidos = cargar_partidos(
-                st.session_state.equipo_id,
-                st.session_state.temporada_id,
-                st.session_state.get('fase_id')
-            )
-            
-            if not partidos.empty:
-                ultimo_partido_id = partidos.iloc[0]['id']
-                badges_nuevos = [b for b in badges if b['partido_id'] == ultimo_partido_id]
-                
-                if badges_nuevos:
-                    st.markdown(f"""
-                    <div style="background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); 
-                                color: white; padding: 1rem 1.5rem; border-radius: 10px; 
-                                margin-bottom: 1.5rem; display: flex; align-items: center;">
-                        <span style="font-size: 2rem; margin-right: 1rem;">🎉</span>
-                        <div>
-                            <h3 style="margin: 0; color: white;">Nous assoliments desbloquejats!</h3>
-                            <p style="margin: 0; opacity: 0.9;">{len(badges_nuevos)} badges nous a l'últim partit</p>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # Resumen rápido
-        st.subheader("📊 Resum ràpid")
-        
-        partidos = cargar_partidos(
-            st.session_state.equipo_id,
-            st.session_state.temporada_id,
-            st.session_state.get('fase_id')
-        )
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Partits", len(partidos))
-        col2.metric("Equip", st.session_state.get('equipo_nombre', '-'))
-        col3.metric("Temporada", st.session_state.get('temporada_nombre', '-'))
-        
-        # Sección de Badges
-        if badges:
-            st.markdown("---")
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.subheader("🏆 Últims Assoliments de l'Equip")
-            with col2:
-                st.markdown(f"""
-                <div style="background: #C8102E; color: white; padding: 0.3rem 0.8rem; 
-                            border-radius: 20px; text-align: center; margin-top: 0.5rem;">
-                    {len(badges)} totals
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Mostrar badges en grid (máximo 6)
-            badges_mostrar = badges[:6]
-            
-            cols = st.columns(2)
-            for idx, badge in enumerate(badges_mostrar):
-                with cols[idx % 2]:
-                    # Determinar color según tipo
-                    if badge['tipo'] == 'gold':
-                        bg_color = "linear-gradient(135deg, #fff9e6 0%, #ffe066 100%)"
-                        border_color = "#FFD700"
-                    elif badge['tipo'] == 'fire':
-                        bg_color = "linear-gradient(135deg, #ffe5e5 0%, #ffcccc 100%)"
-                        border_color = "#ff4444"
-                    elif badge['tipo'] == 'perfect':
-                        bg_color = "linear-gradient(135deg, #e5ffe5 0%, #ccffcc 100%)"
-                        border_color = "#44ff44"
-                    else:
-                        bg_color = "linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)"
-                        border_color = "#C8102E"
-                    
-                    # Calcular si es nuevo (del último partido)
-                    es_nuevo = badge['partido_id'] == partidos.iloc[0]['id'] if not partidos.empty else False
-                    nuevo_tag = '<span style="background: #C8102E; color: white; font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 10px; margin-left: 0.5rem;">NOU!</span>' if es_nuevo else ''
-                    
-                    # Formatear fecha
-                    if badge['fecha']:
-                        from datetime import datetime, date
-                        if isinstance(badge['fecha'], str):
-                            fecha_badge = datetime.strptime(badge['fecha'], '%Y-%m-%d').date()
-                        else:
-                            fecha_badge = badge['fecha']
-                        
-                        dias = (date.today() - fecha_badge).days
-                        if dias == 0:
-                            fecha_texto = "Avui"
-                        elif dias == 1:
-                            fecha_texto = "Ahir"
-                        elif dias < 7:
-                            fecha_texto = f"Fa {dias} dies"
-                        elif dias < 14:
-                            fecha_texto = "Fa 1 setmana"
-                        else:
-                            fecha_texto = f"Fa {dias // 7} setmanes"
-                    else:
-                        fecha_texto = ""
-                    
-                    st.markdown(f"""
-                    <div style="display: flex; align-items: center; padding: 1rem; 
-                                border-radius: 10px; background: {bg_color}; 
-                                border-left: 4px solid {border_color}; margin-bottom: 0.5rem;">
-                        <span style="font-size: 2rem; margin-right: 1rem;">{badge['icono']}</span>
-                        <div>
-                            <h4 style="margin: 0; font-size: 0.95rem;">{badge['titulo']} {nuevo_tag}</h4>
-                            <p style="margin: 0.2rem 0; font-size: 0.85rem; color: #666;">{badge['descripcion']}</p>
-                            <span style="font-size: 0.75rem; color: #999;">{fecha_texto}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            if len(badges) > 6:
-                st.info(f"📜 I {len(badges) - 6} assoliments més...")
-        
+
+    # Sense context seleccionat
+    if not st.session_state.get('equipo_id') or not st.session_state.get('temporada_id'):
+        st.markdown(f"### {t('benvinguda_titol')}")
+        st.markdown(t('benvinguda_intro'))
+        return
+
+    equipo_id = st.session_state.equipo_id
+
+    # === RESUM RÀPID ===
+    st.subheader(t("resum_rapid"))
+
+    partidos = cargar_partidos(
+        equipo_id,
+        st.session_state.temporada_id,
+        st.session_state.get('fase_id')
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric(t("partits"), len(partidos))
+    col2.metric(t("equip").rstrip(":"), st.session_state.get('equipo_nombre', '-'))
+    col3.metric(t("temporada_metric"), st.session_state.get('temporada_nombre', '-'))
+
+    # === HISTORIAL DE PARTITS ===
+    st.markdown("---")
+    st.subheader(t("historial_titol"))
+
+    if partidos.empty:
+        st.info(t("sense_partits"))
+        return
+
+    # Calcular victòries / derrotes / sets a partir dels resultats
+    victorias = derrotas = sets_favor = sets_contra = 0
+    for _, p in partidos.iterrows():
+        if not p['resultado'] or '-' not in str(p['resultado']):
+            continue
+        try:
+            a, b = p['resultado'].split('-')
+            a, b = int(a), int(b)
+        except:
+            continue
+        # resultat guardat en format local-visitante
+        if p['local']:
+            propis, rivals = a, b
         else:
-            st.markdown("---")
-            st.info("🏆 Encara no hi ha assoliments. Juga partits per desbloquejar badges!")
-    
-    else:
-        # Sin contexto seleccionado
-        st.markdown("""
-        ### Benvingut al sistema d'anàlisi estadístic!
-        
-        Utilitza el menú lateral per seleccionar el context de treball i navegar entre les diferents seccions:
-        
-        - **📊 Partit**: Estadístiques completes d'un partit
-        - **👤 Jugador**: Anàlisi individual de jugadors
-        - **🎴 Fitxes**: Fitxa ràpida de jugadors
-        - **📈 Comparativa**: Compara partits o jugadors
-        
-        ---
-        
-        #### Com començar:
-        1. Selecciona l'**equip** al menú lateral
-        2. Selecciona la **temporada** i opcionalment la **fase**
-        3. Navega a la secció que vulguis analitzar
-        """)
+            propis, rivals = b, a
+        sets_favor += propis
+        sets_contra += rivals
+        if propis > rivals:
+            victorias += 1
+        else:
+            derrotas += 1
+
+    # Resum a dalt
+    c1, c2, c3 = st.columns(3)
+    c1.metric(t("victories"), victorias)
+    c2.metric(t("derrotes"), derrotas)
+    c3.metric(t("sets_favor_contra"), f"{sets_favor}-{sets_contra}")
+
+    st.markdown("")
+
+    # Llista de partits (ordre: més recents primer)
+    for _, partido in partidos.iterrows():
+        tipo = t("local_curt") if partido['local'] else t("visitant_curt")
+        fecha = partido['fecha'].strftime("%d/%m/%Y") if partido['fecha'] else "-"
+        resultado = partido['resultado'] or "-"
+
+        color = "#888"
+        if resultado and resultado != "-" and '-' in resultado:
+            try:
+                a, b = resultado.split('-')
+                a, b = int(a), int(b)
+                if partido['local']:
+                    victoria = a > b
+                else:
+                    victoria = b > a
+                color = "#4CAF50" if victoria else "#F44336"
+            except:
+                color = "#888"
+
+        st.markdown(f"""
+        <div style="background: #f5f5f5; padding: 0.5rem 1rem; border-radius: 5px; margin: 0.25rem 0; border-left: 4px solid {color}; color: #1f2937;">
+            {tipo} <strong>vs {partido['rival']}</strong> · {fecha} · <strong>{resultado}</strong>
+        </div>
+        """, unsafe_allow_html=True)
 
 def pagina_partido():
     """Página de análisis de partido"""
