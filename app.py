@@ -7253,7 +7253,7 @@ def sidebar_contexto():
             options=equipo_options,
             format_func=lambda x: t("selecciona_equip") if x is None 
                 else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
-            key='select_equipo'
+            key='select_equipo_' + st.session_state.get("lang", "ca")
         )
         
         if equipo_id:
@@ -7337,7 +7337,7 @@ def sidebar_contexto():
 
     # Botón de donación Ko-fi
     st.sidebar.markdown("---")
-    st.sidebar.markdown("""
+    st.sidebar.markdown(f"""
     <div style="text-align: center;">
         <a href="https://ko-fi.com/gerardbalastegui" target="_blank">
             <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee" style="height: 40px;">
