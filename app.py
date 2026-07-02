@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 from sqlalchemy import create_engine, text
 import streamlit.components.v1 as components
 from datetime import date
+from translations import t, IDIOMES, IDIOMA_PER_DEFECTE
 import bcrypt
 import os
 import secrets
@@ -7309,16 +7310,27 @@ def sidebar_contexto():
     
     # Navegación según rol
     if es_admin:
-        opciones = ["🏠 Inici", "🏐 Equips", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa", "📤 Importar", "⚙️ Admin"]
+        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa", "importar", "admin"]
     elif logged_in:
-        opciones = ["🏠 Inici", "🏐 Equips", "📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
+        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa"]
     else:
-        opciones = ["🏠 Inici", "🏐 Equips"]
-    
+        opciones = ["inici", "equips"]
+
+    nav_labels = {
+        "inici": "🏠 " + t("nav_inici"),
+        "equips": "🏐 " + t("nav_equips"),
+        "partit": "📊 " + t("nav_partit"),
+        "jugador": "👤 " + t("nav_jugador"),
+        "fitxes": "🎴 " + t("nav_fitxes"),
+        "comparativa": "📈 " + t("nav_comparativa"),
+        "importar": "📤 " + t("nav_importar"),
+        "admin": "⚙️ " + t("nav_admin"),
+    }
+
     pagina = st.sidebar.radio(
-        "Navegació",
-        opciones,
-        label_visibility="collapsed"
+        "Navegació", opciones,
+        format_func=lambda k: nav_labels[k],
+        label_visibility="collapsed",
     )
 
     # Botón de donación Ko-fi
@@ -7395,57 +7407,72 @@ def main():
                     equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
                     if not equipo_info.empty:
                         st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+
+    # Idioma inicial des de la URL (?lang=de) o per defecte
+    if "lang" not in st.session_state:
+        st.session_state.lang = st.query_params.get("lang", IDIOMA_PER_DEFECTE)
     
     # Sidebar y navegación (ahora siempre visible)
     pagina = sidebar_contexto()
+
+    # --- Selector d'idioma ---
+    idiomes = list(IDIOMES.keys())
+    _lang = st.session_state.get("lang", IDIOMA_PER_DEFECTE)
+    lang_sel = st.sidebar.radio(
+        t("idioma"),
+        options=idiomes,
+        index=idiomes.index(_lang) if _lang in idiomes else 0,
+        format_func=lambda x: IDIOMES[x],
+        horizontal=True,
+        key="lang_selector",
+    )
+    if lang_sel != st.session_state.get("lang"):
+        st.session_state.lang = lang_sel
+        st.query_params["lang"] = lang_sel
+        st.rerun()
+    st.sidebar.markdown("---")
     
     # Determinar nivel de acceso
     logged_in = st.session_state.get('logged_in', False)
     es_admin = st.session_state.get('es_admin', False)
     
     # Páginas públicas (sin login)
-    paginas_publicas = ["🏠 Inici", "🏐 Equips"]
-    
-    # Páginas que requieren login
-    paginas_privadas = ["📊 Partit", "👤 Jugador", "🎴 Fitxes", "📈 Comparativa"]
-    
-    # Páginas solo admin
-    paginas_admin = ["📤 Importar", "⚙️ Admin"]
-    
-    # Routing
+    paginas_publicas = ["inici", "equips"]
+    paginas_privadas = ["partit", "jugador", "fitxes", "comparativa"]
+    paginas_admin = ["importar", "admin"]
+
     if pagina in paginas_publicas:
-        # Acceso libre
-        if pagina == "🏠 Inici":
+        if pagina == "inici":
             if not logged_in:
                 pagina_inicio_publica()
             else:
                 pagina_inicio()
-        elif pagina == "🏐 Equips":
+        elif pagina == "equips":
             pagina_equipos_publica()
-    
+
     elif pagina in paginas_privadas:
         if not logged_in:
-            st.warning("🔐 Has d'iniciar sessió per veure aquesta secció")
+            st.warning(t("avis_login"))
             mostrar_login_inline()
         else:
-            if pagina == "📊 Partit":
+            if pagina == "partit":
                 pagina_partido()
-            elif pagina == "👤 Jugador":
+            elif pagina == "jugador":
                 pagina_jugador()
-            elif pagina == "🎴 Fitxes":
+            elif pagina == "fitxes":
                 pagina_fichas()
-            elif pagina == "📈 Comparativa":
+            elif pagina == "comparativa":
                 pagina_comparativa()
-    
+
     elif pagina in paginas_admin:
         if not es_admin:
-            st.error("⛔ Necessites permisos d'administrador")
+            st.error(t("avis_admin"))
         else:
-            if pagina == "📤 Importar":
+            if pagina == "importar":
                 from importar_partido_streamlit import pagina_importar_partido
                 pagina_importar_partido(get_engine)
-            elif pagina == "⚙️ Admin":
+            elif pagina == "admin":
                 pagina_admin()
-
+                
 if __name__ == "__main__":
     main()
