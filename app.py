@@ -7140,99 +7140,103 @@ def pagina_admin():
 # SIDEBAR Y NAVEGACIÓN
 # =============================================================================
 
-def sidebar_contexto():
-    """Sidebar con contexto y navegación"""
-    
-    # Inicializar contador de intentos de login
+def selector_idioma():
+    """Selector d'idioma a la barra lateral."""
+    idiomes = list(IDIOMES.keys())
+    _lang = st.session_state.get("lang", IDIOMA_PER_DEFECTE)
+    lang_sel = st.sidebar.radio(
+        t("idioma"),
+        options=idiomes,
+        index=idiomes.index(_lang) if _lang in idiomes else 0,
+        format_func=lambda x: IDIOMES[x],
+        horizontal=True,
+        key="lang_selector",
+    )
+    if lang_sel != st.session_state.get("lang"):
+        st.session_state.lang = lang_sel
+        st.query_params["lang"] = lang_sel
+        st.rerun()
+
+def pantalla_login():
+    """Pantalla d'accés: sense sessió només es veu el login."""
+    import time
+    selector_idioma()
+
     if 'intentos_login' not in st.session_state:
         st.session_state.intentos_login = 0
     if 'bloqueado_hasta' not in st.session_state:
         st.session_state.bloqueado_hasta = None
-    
-    logged_in = st.session_state.get('logged_in', False)
-    es_admin = st.session_state.get('es_admin', False)
-    
-    # Mostrar estado de sesión
-    if logged_in:
-        usuario = st.session_state.get('usuario', {})
-        st.sidebar.markdown(f"👤 **{usuario.get('username', '')}**")
-        if st.sidebar.button("🚪 Tancar sessió", use_container_width=True):
-            logout()
-            st.rerun()
-    else:
-        st.sidebar.markdown("👤 **Visitant**")
-        
-        with st.sidebar.expander("🔐 Iniciar sessió"):
-            # Verificar si está bloqueado
-            import time
-            ahora = time.time()
-            
-            if st.session_state.bloqueado_hasta and ahora < st.session_state.bloqueado_hasta:
-                segundos_restantes = int(st.session_state.bloqueado_hasta - ahora)
-                st.error(f"⏳ Massa intents. Espera {segundos_restantes} segons.")
-            else:
-                # Resetear bloqueo si ya pasó el tiempo
-                if st.session_state.bloqueado_hasta and ahora >= st.session_state.bloqueado_hasta:
+
+    st.markdown("""
+    <div class="main-header"><h1>🏐 Voleibol Stats</h1></div>
+    """, unsafe_allow_html=True)
+    st.subheader(t("login_titol"))
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        ahora = time.time()
+        if st.session_state.bloqueado_hasta and ahora < st.session_state.bloqueado_hasta:
+            segundos = int(st.session_state.bloqueado_hasta - ahora)
+            st.error(t("massa_intents_espera").format(segundos))
+            return
+        if st.session_state.bloqueado_hasta and ahora >= st.session_state.bloqueado_hasta:
+            st.session_state.intentos_login = 0
+            st.session_state.bloqueado_hasta = None
+
+        username = st.text_input(t("usuari"), key="login_user")
+        password = st.text_input(t("contrasenya"), type="password", key="login_pass")
+
+        if st.session_state.intentos_login > 0:
+            st.warning(t("intents_restants").format(5 - st.session_state.intentos_login))
+
+        if st.button(t("entrar"), type="primary", use_container_width=True, key="login_btn"):
+            if username and password:
+                usuario = verificar_login(username, password)
+                if usuario:
                     st.session_state.intentos_login = 0
                     st.session_state.bloqueado_hasta = None
-                
-                username = st.text_input("Usuari:", key="sidebar_login_user")
-                password = st.text_input("Contrasenya:", type="password", key="sidebar_login_pass")
-                
-                # Mostrar intentos restantes si hay alguno fallido
-                if st.session_state.intentos_login > 0:
-                    intentos_restantes = 5 - st.session_state.intentos_login
-                    st.warning(f"⚠️ {intentos_restantes} intents restants")
-                
-                if st.button("Entrar", type="primary", use_container_width=True, key="sidebar_login_btn"):
-                    if username and password:
-                        usuario = verificar_login(username, password)
-                        
-                        if usuario:
-                            # Login correcto - resetear intentos
-                            st.session_state.intentos_login = 0
-                            st.session_state.bloqueado_hasta = None
-                            
-                            st.session_state.logged_in = True
-                            st.session_state.usuario = usuario
-                            st.session_state.es_admin = usuario['es_admin']
-
-                            # Crear sesión persistente
-                            token = crear_sesion(usuario['id'])
-                            if token:
-                                st.session_state.session_token = token
-                                st.query_params['session'] = token
-                            
-                            if not usuario['es_admin'] and usuario['equipo_id']:
-                                st.session_state.equipo_id = usuario['equipo_id']
-                                equipos = cargar_equipos()
-                                equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
-                                if not equipo_info.empty:
-                                    st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
-                            
-                            # Registrar acceso exitoso
-                            registrar_acceso(usuario['id'], usuario['username'], True)
-                            
-                            st.success(f"✅ Benvingut, {usuario['username']}!")
-                            st.rerun()
-                        else:
-                            # Login fallido
-                            st.session_state.intentos_login += 1
-                            
-                            # Registrar intento fallido
-                            registrar_acceso(None, username, False)
-                            
-                            if st.session_state.intentos_login >= 5:
-                                # Bloquear durante 60 segundos
-                                st.session_state.bloqueado_hasta = time.time() + 60
-                                st.error("❌ Massa intents. Bloquejat 60 segons.")
-                            else:
-                                st.error("❌ Usuari o contrasenya incorrectes")
+                    st.session_state.logged_in = True
+                    st.session_state.usuario = usuario
+                    st.session_state.es_admin = usuario['es_admin']
+                    token = crear_sesion(usuario['id'])
+                    if token:
+                        st.session_state.session_token = token
+                        st.query_params['session'] = token
+                    if not usuario['es_admin'] and usuario['equipo_id']:
+                        st.session_state.equipo_id = usuario['equipo_id']
+                        equipos = cargar_equipos()
+                        equipo_info = equipos[equipos['id'] == usuario['equipo_id']]
+                        if not equipo_info.empty:
+                            st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
+                    registrar_acceso(usuario['id'], usuario['username'], True)
+                    st.success(t("benvingut").format(usuario['username']))
+                    st.rerun()
+                else:
+                    st.session_state.intentos_login += 1
+                    registrar_acceso(None, username, False)
+                    if st.session_state.intentos_login >= 5:
+                        st.session_state.bloqueado_hasta = time.time() + 60
+                        st.error(t("massa_intents_bloqueig"))
                     else:
-                        st.warning("⚠️ Introdueix usuari i contrasenya")
-    
+                        st.error(t("error_credencials"))
+            else:
+                st.warning(t("avis_credencials"))
+
+def sidebar_contexto():
+    """Sidebar amb context i navegació (només usuaris autenticats)."""
+    selector_idioma()
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📋 Context de Treball")
+
+    usuario = st.session_state.get('usuario', {})
+    st.sidebar.markdown(f"👤 **{usuario.get('username', '')}**")
+    if st.sidebar.button(t("tancar_sessio"), use_container_width=True):
+        logout()
+        st.rerun()
+
+    es_admin = st.session_state.get('es_admin', False)
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📋 " + t("context_treball"))
     
     # Cargar datos
     equipos = cargar_equipos()
@@ -7245,9 +7249,9 @@ def sidebar_contexto():
         # Admin puede seleccionar cualquier equipo
         equipo_options = [None] + equipos['id'].tolist()
         equipo_id = st.sidebar.selectbox(
-            "Equip:",
+            t("equip"),
             options=equipo_options,
-            format_func=lambda x: "Selecciona l'equip..." if x is None 
+            format_func=lambda x: t("selecciona_equip") if x is None 
                 else equipos[equipos['id'] == x]['nombre_completo'].iloc[0],
             key='select_equipo'
         )
@@ -7262,16 +7266,16 @@ def sidebar_contexto():
             equipo_nombre = st.session_state.get('equipo_nombre', '')
             st.sidebar.info(f"🏐 **{equipo_nombre}**")
         else:
-            st.sidebar.warning("⚠️ No tens equip assignat")
+            st.sidebar.warning(t("sense_equip"))
             equipo_id = None
     
     if equipo_id:
         # Selector de temporada con placeholder
         temporada_options = [None] + temporadas['id'].tolist()
         temporada_id = st.sidebar.selectbox(
-            "Temporada:",
+            t("temporada"),
             options=temporada_options,
-            format_func=lambda x: "Selecciona la temporada..." if x is None
+            format_func=lambda x: t("selecciona_temporada") if x is None
                 else temporadas[temporadas['id'] == x]['nombre'].iloc[0],
             key='select_temporada'
         )
@@ -7286,9 +7290,9 @@ def sidebar_contexto():
             if not fases.empty:
                 fase_options = [None] + fases['id'].tolist()
                 fase_id = st.sidebar.selectbox(
-                    "Fase (opcional):",
+                    t("fase_opcional"),
                     options=fase_options,
-                    format_func=lambda x: "Totes les fases" if x is None 
+                    format_func=lambda x: t("totes_fases") if x is None 
                         else fases[fases['id'] == x]['nombre'].iloc[0],
                     key='select_fase'
                 )
@@ -7311,10 +7315,8 @@ def sidebar_contexto():
     # Navegación según rol
     if es_admin:
         opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa", "importar", "admin"]
-    elif logged_in:
-        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa"]
     else:
-        opciones = ["inici", "equips"]
+        opciones = ["inici", "equips", "partit", "jugador", "fitxes", "comparativa"]
 
     nav_labels = {
         "inici": "🏠 " + t("nav_inici"),
@@ -7340,7 +7342,7 @@ def sidebar_contexto():
         <a href="https://ko-fi.com/gerardbalastegui" target="_blank">
             <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee" style="height: 40px;">
         </a>
-        <p style="font-size: 0.75rem; color: #888; margin-top: 0.5rem;">Si t'agrada l'app, convida'm a un cafè ☕</p>
+        <p style="font-size: 0.75rem; color: #888; margin-top: 0.5rem;">{t("kofi_text")}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -7363,7 +7365,6 @@ def sidebar_contexto():
 # =============================================================================
 
 def main():
-
     # CSS para mejorar móvil
     st.markdown("""
     <style>
@@ -7390,6 +7391,10 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
+    # Idioma inicial des de la URL (?lang=de) o per defecte
+    if "lang" not in st.session_state:
+        st.session_state.lang = st.query_params.get("lang", IDIOMA_PER_DEFECTE)
+
     # Verificar si hay sesión guardada en query params
     if not st.session_state.get('logged_in'):
         token = st.query_params.get('session')
@@ -7408,71 +7413,35 @@ def main():
                     if not equipo_info.empty:
                         st.session_state.equipo_nombre = equipo_info['nombre_completo'].iloc[0]
 
-    # Idioma inicial des de la URL (?lang=de) o per defecte
-    if "lang" not in st.session_state:
-        st.session_state.lang = st.query_params.get("lang", IDIOMA_PER_DEFECTE)
-    
-    # Sidebar y navegación (ahora siempre visible)
+    # Porta d'accés: sense sessió, només login
+    if not st.session_state.get('logged_in'):
+        pantalla_login()
+        return
+
+    # Sidebar y navegación (només usuaris autenticats)
     pagina = sidebar_contexto()
-
-    # --- Selector d'idioma ---
-    idiomes = list(IDIOMES.keys())
-    _lang = st.session_state.get("lang", IDIOMA_PER_DEFECTE)
-    lang_sel = st.sidebar.radio(
-        t("idioma"),
-        options=idiomes,
-        index=idiomes.index(_lang) if _lang in idiomes else 0,
-        format_func=lambda x: IDIOMES[x],
-        horizontal=True,
-        key="lang_selector",
-    )
-    if lang_sel != st.session_state.get("lang"):
-        st.session_state.lang = lang_sel
-        st.query_params["lang"] = lang_sel
-        st.rerun()
-    st.sidebar.markdown("---")
-    
-    # Determinar nivel de acceso
-    logged_in = st.session_state.get('logged_in', False)
     es_admin = st.session_state.get('es_admin', False)
-    
-    # Páginas públicas (sin login)
-    paginas_publicas = ["inici", "equips"]
-    paginas_privadas = ["partit", "jugador", "fitxes", "comparativa"]
-    paginas_admin = ["importar", "admin"]
 
-    if pagina in paginas_publicas:
-        if pagina == "inici":
-            if not logged_in:
-                pagina_inicio_publica()
-            else:
-                pagina_inicio()
-        elif pagina == "equips":
-            pagina_equipos_publica()
+    if pagina == "inici":
+        pagina_inicio()
+    elif pagina == "equips":
+        pagina_equipos_publica()
+    elif pagina == "partit":
+        pagina_partido()
+    elif pagina == "jugador":
+        pagina_jugador()
+    elif pagina == "fitxes":
+        pagina_fichas()
+    elif pagina == "comparativa":
+        pagina_comparativa()
+    elif pagina == "importar":
+        if es_admin:
+            from importar_partido_streamlit import pagina_importar_partido
+            pagina_importar_partido(get_engine)
+    elif pagina == "admin":
+        if es_admin:
+            pagina_admin()
 
-    elif pagina in paginas_privadas:
-        if not logged_in:
-            st.warning(t("avis_login"))
-            mostrar_login_inline()
-        else:
-            if pagina == "partit":
-                pagina_partido()
-            elif pagina == "jugador":
-                pagina_jugador()
-            elif pagina == "fitxes":
-                pagina_fichas()
-            elif pagina == "comparativa":
-                pagina_comparativa()
 
-    elif pagina in paginas_admin:
-        if not es_admin:
-            st.error(t("avis_admin"))
-        else:
-            if pagina == "importar":
-                from importar_partido_streamlit import pagina_importar_partido
-                pagina_importar_partido(get_engine)
-            elif pagina == "admin":
-                pagina_admin()
-                
 if __name__ == "__main__":
     main()
