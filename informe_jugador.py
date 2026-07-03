@@ -27,7 +27,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 # La portada sempre s'inclou; no és un bloc triable.
 # (De moment només "metriques"; anirem afegint la resta un a un.)
 BLOCS_JUGADOR = [
-    "metriques",  # tabla_y_grafica_combinada: eficàcia/eficiència per acció
+    "metriques",
+    "radar",
 ]
 
 _NOMBRES_CAT = {"atacar": "Atac", "recepción": "Recepció", "saque": "Saque", "bloqueo": "Bloqueig"}
@@ -91,6 +92,75 @@ def _bloc_metriques(pdf, conn, partido_ids_str, jugador_id):
     df_disp = pd.DataFrame(filas, columns=["Acció", "Total", "Eficàcia (%)", "Eficiència (%)"])
     tabla_y_grafica_combinada(pdf, df_disp, "Estadístiques principals", columna_x="Acció")
 
+def _bloc_radar(pdf, conn, partido_ids_str, jugador_id):
+    """Radar de perfil: eficàcia per acció (atac, recepció, saque, bloqueig)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from config_v2 import COLOR_ROJO, COLOR_NEGRO, A4_H
+
+    df = pd.read_sql(text(f"""
+        SELECT tipo_accion,
+               COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE marca = '#') AS puntos,
+               COUNT(*) FILTER (WHERE marca = '+') AS positivos
+        FROM {TABLA_ACCIONES}
+        WHERE partido_id IN ({partido_ids_str})
+          AND jugador_id = :jid
+          AND tipo_accion IN ('atacar', 'recepción', 'saque', 'bloqueo')
+        GROUP BY tipo_accion
+    """), conn, params={"jid": jugador_id})
+
+    if df.empty:
+        return
+
+    df['eficacia'] = ((df['puntos'] + df['positivos']) / df['total'] * 100).round(1)
+
+    # Ordenar i muntar categories/valors
+    categorias, valores = [], []
+    for acc in _ORDEN:
+        r = df[df['tipo_accion'] == acc]
+        if not r.empty:
+            categorias.append(_NOMBRES_CAT[acc])
+            valores.append(float(r.iloc[0]['eficacia']))
+
+    if len(categorias) < 3:
+        return  # un radar amb menys de 3 eixos no té sentit
+
+    # Tancar el polígon
+    angulos = np.linspace(0, 2 * np.pi, len(categorias), endpoint=False).tolist()
+    valores_c = valores + valores[:1]
+    angulos_c = angulos + angulos[:1]
+
+    fig = plt.figure(figsize=A4_H)
+    # Títol
+    fig.text(0.02, 0.98, "PERFIL DEL JUGADOR", fontsize=14,
+             color=COLOR_ROJO, fontweight='bold', verticalalignment='top')
+    fig.text(0.02, 0.955, "Eficàcia per acció (%)", fontsize=11,
+             color=COLOR_NEGRO, verticalalignment='top')
+    fig.text(0.02, 0.935, '─' * 30, fontsize=10, color=COLOR_ROJO,
+             verticalalignment='top')
+
+    ax = fig.add_subplot(111, polar=True)
+    ax.set_position([0.15, 0.08, 0.7, 0.78])  # deixar espai per al títol
+
+    ax.plot(angulos_c, valores_c, color=COLOR_ROJO, linewidth=2)
+    ax.fill(angulos_c, valores_c, color=COLOR_ROJO, alpha=0.25)
+
+    ax.set_xticks(angulos)
+    ax.set_xticklabels(categorias, fontsize=12, fontweight='bold')
+    ax.set_ylim(0, 100)
+    ax.set_yticks([20, 40, 60, 80, 100])
+    ax.set_yticklabels(["20", "40", "60", "80", "100"], fontsize=8, color="#888")
+    ax.grid(color="#CCCCCC", linestyle="--", linewidth=0.6)
+
+    # Valors a cada vèrtex
+    for ang, val in zip(angulos, valores):
+        ax.text(ang, val + 6, f"{val:.0f}%", ha='center', va='center',
+                fontsize=10, color=COLOR_NEGRO, fontweight='bold')
+
+    pdf.savefig(fig)
+    plt.close(fig)
+
 
 def generar_pdf_jugador(jugador_id, partido_ids, contexto_txt, bloques):
     """
@@ -131,6 +201,8 @@ def generar_pdf_jugador(jugador_id, partido_ids, contexto_txt, bloques):
 
             if "metriques" in bloques:
                 _bloc_metriques(pdf, conn, ids_str, jugador_id)
+            if "radar" in bloques:
+                _bloc_radar(pdf, conn, ids_str, jugador_id)
 
     buffer.seek(0)
     return buffer
