@@ -72,6 +72,7 @@ TRANSLATIONS = {
     "nav_jugador": {"ca": "Jugador", "de": "Spieler"},
     "nav_fitxes": {"ca": "Fitxes", "de": "Spielerkarten"},
     "nav_comparativa": {"ca": "Comparativa", "de": "Vergleich"},
+    "nav_informes": {"ca": "Informes", "de": "Berichte"},
     "nav_importar": {"ca": "Importar", "de": "Importieren"},
     "nav_admin": {"ca": "Admin", "de": "Admin"},
 
@@ -94,8 +95,10 @@ TRANSLATIONS = {
         "ca": "Si t'agrada l'app, convida'm a un cafè ☕",
         "de": "Wenn dir die App gefällt, spendier mir einen Kaffee ☕",
     },
-    
-    # ---- Home: resum ràpid + historial ----
+
+    # ---------------------------------------------------------------
+    # Home: resum ràpid + historial
+    # ---------------------------------------------------------------
     "resum_rapid": {"ca": "📊 Resum ràpid", "de": "📊 Schnellübersicht"},
     "partits": {"ca": "Partits", "de": "Spiele"},
     "temporada_metric": {"ca": "Temporada", "de": "Saison"},
@@ -108,6 +111,28 @@ TRANSLATIONS = {
     "sense_partits": {"ca": "Encara no hi ha partits registrats", "de": "Noch keine Spiele erfasst"},
     "local_curt": {"ca": "🏠", "de": "🏠"},
     "visitant_curt": {"ca": "✈️", "de": "✈️"},
+
+    # ---------------------------------------------------------------
+    # Informes (PDF)
+    # ---------------------------------------------------------------
+    "informe_titol": {"ca": "📄 Generador d'Informes", "de": "📄 Berichtsgenerator"},
+    "avis_context": {"ca": "⚠️ Selecciona primer un equip i temporada al menú lateral", "de": "⚠️ Wähle zuerst Team und Saison im Seitenmenü"},
+    "informe_selecciona_partit": {"ca": "Selecciona un partit:", "de": "Spiel auswählen:"},
+    "informe_blocs": {"ca": "Blocs a incloure:", "de": "Abschnitte einschließen:"},
+    "informe_generar": {"ca": "📄 Generar informe", "de": "📄 Bericht erstellen"},
+    "informe_generant": {"ca": "Generant l'informe...", "de": "Bericht wird erstellt..."},
+    "informe_descarregar": {"ca": "⬇️ Descarregar PDF", "de": "⬇️ PDF herunterladen"},
+    "informe_cap_bloc": {"ca": "⚠️ Selecciona almenys un bloc", "de": "⚠️ Mindestens einen Abschnitt auswählen"},
+    "informe_error": {"ca": "❌ No s'ha pogut generar l'informe", "de": "❌ Bericht konnte nicht erstellt werden"},
+    "bloc_eficacia_equip": {"ca": "Eficàcia de l'equip", "de": "Team-Effizienz"},
+    "bloc_detall_jugador": {"ca": "Detall per jugador", "de": "Details pro Spieler"},
+    "bloc_sideout": {"ca": "Side-out i contraatac", "de": "Side-out und Konter"},
+    "bloc_rotacions": {"ca": "Rotacions", "de": "Rotationen"},
+    "bloc_distribucio": {"ca": "Distribució del col·locador", "de": "Zuspieler-Verteilung"},
+    "bloc_distribucio_recepcio": {"ca": "Distribució segons recepció", "de": "Verteilung nach Annahme"},
+    "bloc_errors": {"ca": "Anàlisi d'errors", "de": "Fehleranalyse"},
+    "bloc_rankings": {"ca": "Rànquings positius", "de": "Positiv-Rankings"},
+    "bloc_valor_jugadors": {"ca": "Valor dels jugadors", "de": "Spielerwert"},
 }
 
 
