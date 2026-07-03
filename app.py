@@ -5893,6 +5893,7 @@ def pagina_informes():
 
         BLOCS = {
             "metriques": t("bloc_metriques"),
+            "radar": t("bloc_radar"),
         }
         seleccion = st.multiselect(
             t("informe_blocs"),
