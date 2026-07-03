@@ -145,6 +145,7 @@ TRANSLATIONS = {
     "informe_temporada_ctx": {"ca": "Tota la temporada ({} partits)", "de": "Gesamte Saison ({} Spiele)"},
     "sense_jugadors": {"ca": "No hi ha jugadors en aquest equip", "de": "Keine Spieler in diesem Team"},
     "bloc_metriques": {"ca": "Mètriques principals", "de": "Hauptkennzahlen"},
+    "bloc_radar": {"ca": "Radar de perfil", "de": "Profil-Radar"},
 }
 
 
