@@ -133,6 +133,18 @@ TRANSLATIONS = {
     "bloc_errors": {"ca": "Anàlisi d'errors", "de": "Fehleranalyse"},
     "bloc_rankings": {"ca": "Rànquings positius", "de": "Positiv-Rankings"},
     "bloc_valor_jugadors": {"ca": "Valor dels jugadors", "de": "Spielerwert"},
+
+    # ---- Informes: jugador ----
+    "informe_ambit": {"ca": "Àmbit de l'informe:", "de": "Berichtstyp:"},
+    "ambit_partit": {"ca": "Partit", "de": "Spiel"},
+    "ambit_jugador": {"ca": "Jugador", "de": "Spieler"},
+    "informe_selecciona_jugador": {"ca": "Selecciona un jugador:", "de": "Spieler auswählen:"},
+    "informe_abast": {"ca": "Sobre quins partits:", "de": "Über welche Spiele:"},
+    "abast_partit": {"ca": "Un partit concret", "de": "Ein einzelnes Spiel"},
+    "abast_temporada": {"ca": "Tota la temporada", "de": "Gesamte Saison"},
+    "informe_temporada_ctx": {"ca": "Tota la temporada ({} partits)", "de": "Gesamte Saison ({} Spiele)"},
+    "sense_jugadors": {"ca": "No hi ha jugadors en aquest equip", "de": "Keine Spieler in diesem Team"},
+    "bloc_metriques": {"ca": "Mètriques principals", "de": "Hauptkennzahlen"},
 }
 
 
