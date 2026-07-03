@@ -5776,7 +5776,7 @@ def pagina_comparativa():
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 def pagina_informes():
-    """Generador selectiu d'informes de partit en PDF."""
+    """Generador selectiu d'informes (partit o jugador) en PDF."""
     st.markdown('<div class="main-header"><h1>' + t("informe_titol") + '</h1></div>',
                 unsafe_allow_html=True)
 
@@ -5798,48 +5798,126 @@ def pagina_informes():
     )
     lang = st.session_state.get("lang", "ca")
 
-    partido_id = st.selectbox(
-        t("informe_selecciona_partit"),
-        options=partidos['id'].tolist(),
-        format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
-        key='informe_partido_' + lang,
+    # --- Selector d'àmbit: partit o jugador ---
+    ambits = ["partit", "jugador"]
+    ambit = st.radio(
+        t("informe_ambit"),
+        options=ambits,
+        format_func=lambda x: t("ambit_partit") if x == "partit" else t("ambit_jugador"),
+        horizontal=True,
+        key='informe_ambit_' + lang,
     )
+    st.markdown("---")
 
-    BLOCS = {
-        "eficacia_equip": t("bloc_eficacia_equip"),
-        "detall_jugador": t("bloc_detall_jugador"),
-        "sideout": t("bloc_sideout"),
-        "rotacions": t("bloc_rotacions"),
-        "distribucio": t("bloc_distribucio"),
-        "distribucio_recepcio": t("bloc_distribucio_recepcio"),
-        "errors": t("bloc_errors"),
-        "rankings": t("bloc_rankings"),
-        "valor_jugadors": t("bloc_valor_jugadors"),
-    }
+    # =========================================================
+    # ÀMBIT PARTIT
+    # =========================================================
+    if ambit == "partit":
+        partido_id = st.selectbox(
+            t("informe_selecciona_partit"),
+            options=partidos['id'].tolist(),
+            format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
+            key='informe_partido_' + lang,
+        )
 
-    seleccion = st.multiselect(
-        t("informe_blocs"),
-        options=list(BLOCS.keys()),
-        default=list(BLOCS.keys()),
-        format_func=lambda k: BLOCS[k],
-        key='informe_blocs_' + lang,
-    )
+        BLOCS = {
+            "eficacia_equip": t("bloc_eficacia_equip"),
+            "detall_jugador": t("bloc_detall_jugador"),
+            "sideout": t("bloc_sideout"),
+            "rotacions": t("bloc_rotacions"),
+            "distribucio": t("bloc_distribucio"),
+            "distribucio_recepcio": t("bloc_distribucio_recepcio"),
+            "errors": t("bloc_errors"),
+            "rankings": t("bloc_rankings"),
+            "valor_jugadors": t("bloc_valor_jugadors"),
+        }
+        seleccion = st.multiselect(
+            t("informe_blocs"),
+            options=list(BLOCS.keys()),
+            default=list(BLOCS.keys()),
+            format_func=lambda k: BLOCS[k],
+            key='informe_blocs_' + lang,
+        )
 
-    if st.button(t("informe_generar"), type="primary"):
-        if not seleccion:
-            st.warning(t("informe_cap_bloc"))
-        else:
-            with st.spinner(t("informe_generant")):
-                from informe_selector import generar_pdf_partido
-                pdf_buffer = generar_pdf_partido(partido_id, seleccion)
-            if pdf_buffer is None:
-                st.error(t("informe_error"))
+        if st.button(t("informe_generar"), type="primary", key="btn_informe_partit"):
+            if not seleccion:
+                st.warning(t("informe_cap_bloc"))
             else:
-                info = partidos[partidos['id'] == partido_id].iloc[0]
-                nom = f"informe_{info['rival']}".replace(' ', '_') + ".pdf"
-                st.session_state['pdf_generat'] = pdf_buffer.getvalue()
-                st.session_state['pdf_nom'] = nom
+                with st.spinner(t("informe_generant")):
+                    from informe_selector import generar_pdf_partido
+                    pdf_buffer = generar_pdf_partido(partido_id, seleccion)
+                if pdf_buffer is None:
+                    st.error(t("informe_error"))
+                else:
+                    info = partidos[partidos['id'] == partido_id].iloc[0]
+                    nom = f"informe_{info['rival']}".replace(' ', '_') + ".pdf"
+                    st.session_state['pdf_generat'] = pdf_buffer.getvalue()
+                    st.session_state['pdf_nom'] = nom
 
+    # =========================================================
+    # ÀMBIT JUGADOR
+    # =========================================================
+    else:
+        jugadores = cargar_jugadores(st.session_state.equipo_id)
+        if jugadores.empty:
+            st.info(t("sense_jugadors"))
+            return
+
+        jugador_id = st.selectbox(
+            t("informe_selecciona_jugador"),
+            options=jugadores['id'].tolist(),
+            format_func=lambda x: jugadores[jugadores['id'] == x]['nombre_completo'].iloc[0],
+            key='informe_jugador_' + lang,
+        )
+
+        abast = st.radio(
+            t("informe_abast"),
+            options=["partit", "temporada"],
+            format_func=lambda x: t("abast_partit") if x == "partit" else t("abast_temporada"),
+            key='informe_abast_' + lang,
+        )
+
+        if abast == "partit":
+            partido_sel = st.selectbox(
+                t("informe_selecciona_partit"),
+                options=partidos['id'].tolist(),
+                format_func=lambda x: partidos[partidos['id'] == x]['display'].iloc[0],
+                key='informe_jug_partit_' + lang,
+            )
+            partido_ids = [partido_sel]
+            info_p = partidos[partidos['id'] == partido_sel].iloc[0]
+            contexto_txt = info_p['display']
+        else:
+            partido_ids = partidos['id'].tolist()
+            contexto_txt = t("informe_temporada_ctx").format(len(partido_ids))
+
+        BLOCS = {
+            "metriques": t("bloc_metriques"),
+        }
+        seleccion = st.multiselect(
+            t("informe_blocs"),
+            options=list(BLOCS.keys()),
+            default=list(BLOCS.keys()),
+            format_func=lambda k: BLOCS[k],
+            key='informe_blocs_jug_' + lang,
+        )
+
+        if st.button(t("informe_generar"), type="primary", key="btn_informe_jugador"):
+            if not seleccion:
+                st.warning(t("informe_cap_bloc"))
+            else:
+                with st.spinner(t("informe_generant")):
+                    from informe_jugador import generar_pdf_jugador
+                    pdf_buffer = generar_pdf_jugador(jugador_id, partido_ids, contexto_txt, seleccion)
+                if pdf_buffer is None:
+                    st.error(t("informe_error"))
+                else:
+                    nom_jug = jugadores[jugadores['id'] == jugador_id]['nombre_completo'].iloc[0]
+                    nom = f"informe_{nom_jug}".replace(' ', '_') + ".pdf"
+                    st.session_state['pdf_generat'] = pdf_buffer.getvalue()
+                    st.session_state['pdf_nom'] = nom
+
+    # --- Botó de descàrrega (comú als dos àmbits) ---
     if st.session_state.get('pdf_generat'):
         st.download_button(
             t("informe_descarregar"),
@@ -5847,7 +5925,6 @@ def pagina_informes():
             file_name=st.session_state.get('pdf_nom', 'informe.pdf'),
             mime="application/pdf",
         )
-
 def pagina_fichas():
     """Página de fichas individuales de jugadores"""
     st.markdown("""
